@@ -1,0 +1,8 @@
+default: true
+
+ignores:
+  - .build
+  - .swiftpm
+  - .github
+  - .vale
+  - .git
