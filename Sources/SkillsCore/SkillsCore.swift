@@ -1,11 +1,13 @@
 import Foundation
 import CryptoKit
 
+/// Supported skill ecosystems.
 public enum AgentKind: String, Codable, CaseIterable, Sendable {
     case codex
     case claude
 }
 
+/// Normalized finding severity.
 public enum Severity: String, Codable, Sendable {
     case error
     case warning
@@ -14,6 +16,7 @@ public enum Severity: String, Codable, Sendable {
 
 public typealias RuleID = String
 
+/// A single validation result emitted by the scanner.
 public struct Finding: Identifiable, Codable, Hashable, Sendable {
     public var id: UUID = UUID()
     public let ruleID: RuleID
@@ -43,6 +46,7 @@ public struct Finding: Identifiable, Codable, Hashable, Sendable {
     }
 }
 
+/// Parsed SKILL.md metadata plus filesystem context.
 public struct SkillDoc: Codable, Hashable, Sendable {
     public let agent: AgentKind
     public let rootURL: URL
@@ -56,6 +60,7 @@ public struct SkillDoc: Codable, Hashable, Sendable {
     public let frontmatterStartLine: Int
 }
 
+/// Scan root configuration.
 public struct ScanRoot: Hashable, Sendable {
     public let agent: AgentKind
     public let rootURL: URL
@@ -70,6 +75,7 @@ public struct ScanRoot: Hashable, Sendable {
     }
 }
 
+/// Sync comparison results between Codex and Claude trees.
 public struct SyncReport: Hashable, Sendable {
     public var onlyInCodex: [String] = []
     public var onlyInClaude: [String] = []
@@ -78,6 +84,7 @@ public struct SyncReport: Hashable, Sendable {
     public init() {}
 }
 
+/// Structured scan output for JSON emission.
 public struct ScanOutput: Codable, Sendable {
     public let schemaVersion: String
     public let toolVersion: String
@@ -98,6 +105,7 @@ public struct ScanOutput: Codable, Sendable {
     }
 }
 
+/// Public, serializable finding shape for JSON output.
 public struct FindingOutput: Codable, Sendable {
     public let ruleID: String
     public let severity: String
@@ -120,6 +128,7 @@ public struct FindingOutput: Codable, Sendable {
 
 // MARK: - Config
 
+/// Repository or user configuration for scanning and sync.
 public struct SkillsConfig: Codable, Sendable {
     public struct Policy: Codable, Sendable {
         public var strict: Bool?
@@ -145,6 +154,7 @@ public struct SkillsConfig: Codable, Sendable {
     public var policy: Policy?
     public var sync: SyncConfig?
 
+    /// Loads configuration from a JSON file if provided; returns an empty config on failure.
     public static func load(from path: String?) -> SkillsConfig {
         guard let path, !path.isEmpty else { return SkillsConfig() }
         let url = URL(fileURLWithPath: PathUtil.expandTilde(path))
@@ -155,7 +165,9 @@ public struct SkillsConfig: Codable, Sendable {
 
 // MARK: - Path utilities
 
+/// Filesystem helpers used throughout the scanner and sync flows.
 public enum PathUtil {
+    /// Expands `~` to the user's home directory.
     public static func expandTilde(_ path: String) -> String {
         if path.hasPrefix("~") {
             return (path as NSString).expandingTildeInPath
@@ -163,20 +175,24 @@ public enum PathUtil {
         return path
     }
 
+    /// Builds a file URL from a path, expanding `~`.
     public static func urlFromPath(_ path: String) -> URL {
         URL(fileURLWithPath: expandTilde(path))
     }
 
+    /// Returns true when the URL exists and is a directory.
     public static func existsDir(_ url: URL) -> Bool {
         var isDir: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
     }
 
+    /// Returns true when the URL exists and is a file.
     public static func existsFile(_ url: URL) -> Bool {
         var isDir: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && !isDir.boolValue
     }
 
+    /// Minimal glob matcher supporting `*` and `?` wildcards.
     public static func glob(_ pattern: String, matches path: String) -> Bool {
         // Simple glob: * and ? wildcards, no character classes.
         let escaped = pattern
