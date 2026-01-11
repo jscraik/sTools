@@ -6,6 +6,7 @@ final class SyncViewModel: ObservableObject {
     @Published var report: SyncReport = SyncReport()
     @Published var isRunning = false
     @Published var selection: SyncSelection?
+    private var currentTask: Task<SyncReport, Never>?
 
     enum SyncSelection: Hashable {
         case onlyCodex(String)
@@ -22,7 +23,8 @@ final class SyncViewModel: ObservableObject {
         excludeGlobs: [String]
     ) async {
         isRunning = true
-        let result = await Task(priority: .userInitiated) {
+        currentTask?.cancel()
+        currentTask = Task(priority: .userInitiated) {
             if Task.isCancelled { return SyncReport() }
             let codexScan = ScanRoot(agent: .codex, rootURL: codexRoot, recursive: recursive, maxDepth: maxDepth)
             let claudeScan = ScanRoot(agent: .claude, rootURL: claudeRoot, recursive: recursive, maxDepth: maxDepth)
@@ -30,45 +32,52 @@ final class SyncViewModel: ObservableObject {
                 codexRoot: codexScan.rootURL,
                 claudeRoot: claudeScan.rootURL,
                 recursive: recursive,
-                excludeDirNames: Set([".git", ".system", "__pycache__", ".DS_Store"]).union(Set(excludes)),
+                excludeDirNames: Set(InspectorViewModel.defaultExcludes).union(Set(excludes)),
                 excludeGlobs: excludeGlobs
             )
-        }.value
-        if Task.isCancelled {
+        }
+        let result = await currentTask?.value ?? SyncReport()
+        guard !Task.isCancelled else {
             isRunning = false
             return
         }
         report = result
+        isRunning = false
+        currentTask = nil
+    }
+
+    func cancel() {
+        currentTask?.cancel()
         isRunning = false
     }
 }
 
 struct SyncView: View {
     @ObservedObject var viewModel: SyncViewModel
-    let codexRoot: URL
-    let claudeRoot: URL
-    @State private var recursive = false
-    @State private var maxDepth: Int?
-    @State private var excludeInput: String = ""
-    @State private var excludeGlobInput: String = ""
+    @Binding var codexRoots: [URL]
+    @Binding var claudeRoot: URL
+    @Binding var recursive: Bool
+    @Binding var maxDepth: Int?
+    @Binding var excludeInput: String
+    @Binding var excludeGlobInput: String
 
     var body: some View {
-        let rootsValid = PathUtil.existsDir(codexRoot) && PathUtil.existsDir(claudeRoot)
+        let rootsValid = PathUtil.existsDir(activeCodexRoot) && PathUtil.existsDir(claudeRoot)
         VStack(spacing: 0) {
         HStack(spacing: 16) {
             Button {
                 guard rootsValid else { return }
                 Task {
                     await viewModel.run(
-                        codexRoot: codexRoot,
-                            claudeRoot: claudeRoot,
-                            recursive: recursive,
-                            maxDepth: maxDepth,
-                            excludes: parsedExcludes,
-                            excludeGlobs: parsedGlobExcludes
-                        )
-                    }
-                } label: {
+                        codexRoot: activeCodexRoot,
+                        claudeRoot: claudeRoot,
+                        recursive: recursive,
+                        maxDepth: maxDepth,
+                        excludes: parsedExcludes,
+                        excludeGlobs: parsedGlobExcludes
+                    )
+                }
+            } label: {
                     Label(viewModel.isRunning ? "Syncing…" : "Sync", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(viewModel.isRunning || !rootsValid)
@@ -76,7 +85,7 @@ struct SyncView: View {
 
                 if !rootsValid {
                     Label("Set roots in sidebar", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(DesignTokens.Colors.Status.warning)
                         .font(.caption)
                 }
 
@@ -131,18 +140,36 @@ struct SyncView: View {
             .padding(.vertical, 6)
             .background(.bar)
             .font(.system(size: DesignTokens.Typography.BodySmall.size, weight: .regular))
+            .onReceive(NotificationCenter.default.publisher(for: .runScan)) { _ in
+                guard rootsValid else { return }
+                Task {
+                    await viewModel.run(
+                        codexRoot: activeCodexRoot,
+                        claudeRoot: claudeRoot,
+                        recursive: recursive,
+                        maxDepth: maxDepth,
+                        excludes: parsedExcludes,
+                        excludeGlobs: parsedGlobExcludes
+                    )
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .cancelScan)) { _ in
+                viewModel.cancel()
+            }
 
             HStack(spacing: 0) {
                 // Sync results list (fixed width, non-resizable)
                 Group {
                     if viewModel.isRunning {
-                        VStack(spacing: 12) {
-                            ProgressView()
-                            Text("Syncing...")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        // Loading state with skeletons
+                        ScrollView {
+                            VStack(spacing: 8) {
+                                ForEach(0..<6, id: \.self) { _ in
+                                    SkeletonSyncRow()
+                                }
+                            }
+                            .padding(.vertical, 8)
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if viewModel.report.onlyInCodex.isEmpty && 
                               viewModel.report.onlyInClaude.isEmpty && 
                               viewModel.report.differentContent.isEmpty {
@@ -153,7 +180,7 @@ struct SyncView: View {
                             action: rootsValid ? {
                                 Task {
                                     await viewModel.run(
-                                        codexRoot: codexRoot,
+                                        codexRoot: activeCodexRoot,
                                         claudeRoot: claudeRoot,
                                         recursive: recursive,
                                         maxDepth: maxDepth,
@@ -175,7 +202,7 @@ struct SyncView: View {
                 // Detail panel (flexible)
                 Group {
                     if let selection = viewModel.selection {
-                        SyncDetailView(selection: selection, codexRoot: codexRoot, claudeRoot: claudeRoot)
+                        SyncDetailView(selection: selection, codexRoot: activeCodexRoot, claudeRoot: claudeRoot)
                     } else {
                         emptyDetailState
                     }
@@ -189,36 +216,36 @@ struct SyncView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if !viewModel.report.onlyInCodex.isEmpty {
-                    sectionHeader(title: "Only in Codex", count: viewModel.report.onlyInCodex.count, icon: "cpu", tint: .blue)
+                    sectionHeader(title: "Only in Codex", count: viewModel.report.onlyInCodex.count, icon: "cpu", tint: DesignTokens.Colors.Accent.blue)
                     ForEach(viewModel.report.onlyInCodex, id: \.self) { name in
                         syncCard(
                             title: name,
                             icon: "doc.badge.plus",
-                            tint: .blue,
+                            tint: DesignTokens.Colors.Accent.blue,
                             selection: .onlyCodex(name)
                         )
                     }
                 }
 
                 if !viewModel.report.onlyInClaude.isEmpty {
-                    sectionHeader(title: "Only in Claude", count: viewModel.report.onlyInClaude.count, icon: "brain", tint: .purple)
+                    sectionHeader(title: "Only in Claude", count: viewModel.report.onlyInClaude.count, icon: "brain", tint: DesignTokens.Colors.Accent.purple)
                     ForEach(viewModel.report.onlyInClaude, id: \.self) { name in
                         syncCard(
                             title: name,
                             icon: "doc.badge.plus",
-                            tint: .purple,
+                            tint: DesignTokens.Colors.Accent.purple,
                             selection: .onlyClaude(name)
                         )
                     }
                 }
 
                 if !viewModel.report.differentContent.isEmpty {
-                    sectionHeader(title: "Different content", count: viewModel.report.differentContent.count, icon: "doc.badge.gearshape", tint: .orange)
+                    sectionHeader(title: "Different content", count: viewModel.report.differentContent.count, icon: "doc.badge.gearshape", tint: DesignTokens.Colors.Accent.orange)
                     ForEach(viewModel.report.differentContent, id: \.self) { name in
                         syncCard(
                             title: name,
                             icon: "doc.badge.gearshape",
-                            tint: .orange,
+                            tint: DesignTokens.Colors.Accent.orange,
                             selection: .different(name)
                         )
                     }
@@ -302,5 +329,9 @@ struct SyncView: View {
 
     private var parsedGlobExcludes: [String] {
         excludeGlobInput.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    private var activeCodexRoot: URL {
+        codexRoots.first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/skills")
     }
 }

@@ -13,6 +13,13 @@ struct SyncDetailView: View {
     @State private var isLoading = false
     @State private var showingCopyConfirmation = false
     @State private var pendingCopyOperation: CopyOperation?
+    @State private var showLineNumbers = true
+    @State private var diffViewMode: DiffViewMode = .unified
+    
+    enum DiffViewMode: String, CaseIterable {
+        case unified = "Unified"
+        case sideBySide = "Side by Side"
+    }
 
     private var skillName: String {
         switch selection {
@@ -97,6 +104,42 @@ struct SyncDetailView: View {
                                 Text("Diff")
                                     .font(.headline)
                                 Spacer()
+                                
+                                // Statistics
+                                if !diffText.isEmpty {
+                                    HStack(spacing: 12) {
+                                        Label("\(diffStats.additions)", systemImage: "plus.circle.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(DesignTokens.Colors.Status.success)
+                                        Label("\(diffStats.deletions)", systemImage: "minus.circle.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(DesignTokens.Colors.Status.error)
+                                        Label("\(diffStats.totalLines)", systemImage: "doc.text")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(.quaternary.opacity(0.5))
+                                    .cornerRadius(6)
+                                }
+                                
+                                // View mode toggle
+                                Picker("View Mode", selection: $diffViewMode) {
+                                    ForEach(DiffViewMode.allCases, id: \.self) { mode in
+                                        Text(mode.rawValue).tag(mode)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 180)
+                                
+                                Toggle(isOn: $showLineNumbers) {
+                                    Label("Line Numbers", systemImage: "number")
+                                        .font(.caption)
+                                }
+                                .toggleStyle(.checkbox)
+                                .controlSize(.small)
+                                
                                 Button {
                                     #if os(macOS)
                                     NSPasteboard.general.clearContents()
@@ -111,16 +154,17 @@ struct SyncDetailView: View {
                                 .disabled(diffText.isEmpty)
                             }
                             
-                            ScrollView {
-                                Text(diffText.isEmpty ? "Diff unavailable" : diffText)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12)
+                            if diffViewMode == .unified {
+                                ScrollView([.horizontal, .vertical]) {
+                                    enhancedDiffView
+                                        .padding(12)
+                                }
+                                .frame(height: 300)
+                                .background(.tertiary.opacity(0.1))
+                                .cornerRadius(8)
+                            } else {
+                                sideBySideDiffView
                             }
-                            .frame(height: 200)
-                            .background(.tertiary.opacity(0.1))
-                            .cornerRadius(8)
                         }
                     }
                     
@@ -275,6 +319,147 @@ struct SyncDetailView: View {
         if case .different = selection { return true }
         return false
     }
+    
+    private var diffStats: DiffStats {
+        let lines = diffText.split(separator: "\n")
+        var additions = 0
+        var deletions = 0
+        
+        for line in lines {
+            if line.hasPrefix("+") && !line.hasPrefix("+++") {
+                additions += 1
+            } else if line.hasPrefix("-") && !line.hasPrefix("---") {
+                deletions += 1
+            }
+        }
+        
+        return DiffStats(additions: additions, deletions: deletions, totalLines: lines.count)
+    }
+    
+    private var enhancedDiffView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if diffText.isEmpty {
+                Text("Diff unavailable")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            } else {
+                let lines = diffText.split(separator: "\n", omittingEmptySubsequences: false)
+                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                    HStack(spacing: 8) {
+                        if showLineNumbers {
+                            Text("\(index + 1)")
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                        
+                        let (text, color, bgColor) = formatDiffLine(String(line))
+                        Text(text)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(color)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 2)
+                            .padding(.horizontal, 8)
+                            .background(bgColor)
+                    }
+                    .textSelection(.enabled)
+                }
+            }
+        }
+    }
+    
+    private var sideBySideDiffView: some View {
+        HStack(alignment: .top, spacing: 1) {
+            // Left side (codex/deletions)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Codex (Original)")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.tertiary.opacity(0.2))
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(codexContent.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { index, line in
+                            HStack(spacing: 8) {
+                                if showLineNumbers {
+                                    Text("\(index + 1)")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.tertiary)
+                                        .frame(width: 35, alignment: .trailing)
+                                }
+                                Text(String(line))
+                                    .font(.system(.caption, design: .monospaced))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 2)
+                                    .padding(.horizontal, 8)
+                            }
+                            .textSelection(.enabled)
+                        }
+                    }
+                    .padding(8)
+                }
+                .background(.tertiary.opacity(0.05))
+            }
+            .frame(maxWidth: .infinity)
+            
+            Divider()
+            
+            // Right side (claude/additions)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Claude (Modified)")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.tertiary.opacity(0.2))
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(claudeContent.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { index, line in
+                            HStack(spacing: 8) {
+                                if showLineNumbers {
+                                    Text("\(index + 1)")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.tertiary)
+                                        .frame(width: 35, alignment: .trailing)
+                                }
+                                Text(String(line))
+                                    .font(.system(.caption, design: .monospaced))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 2)
+                                    .padding(.horizontal, 8)
+                            }
+                            .textSelection(.enabled)
+                        }
+                    }
+                    .padding(8)
+                }
+                .background(.tertiary.opacity(0.05))
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .frame(height: 300)
+        .background(.tertiary.opacity(0.1))
+        .cornerRadius(8)
+    }
+    
+    private func formatDiffLine(_ line: String) -> (String, Color, Color) {
+        if line.hasPrefix("+++") || line.hasPrefix("---") {
+            return (line, .secondary, .clear)
+        } else if line.hasPrefix("@@") {
+            return (line, .blue, .blue.opacity(0.1))
+        } else if line.hasPrefix("+") {
+            return (line, DesignTokens.Colors.Status.success, DesignTokens.Colors.Status.success.opacity(0.15))
+        } else if line.hasPrefix("-") {
+            return (line, DesignTokens.Colors.Status.error, DesignTokens.Colors.Status.error.opacity(0.15))
+        } else {
+            return (line, .primary, .clear)
+        }
+    }
 
     private var codexFile: URL {
         codexRoot.appendingPathComponent(skillName).appendingPathComponent("SKILL.md")
@@ -418,4 +603,10 @@ private struct CopyOperation: Sendable {
 private struct CopyResult: Sendable {
     let success: Bool
     let message: String
+}
+
+private struct DiffStats {
+    let additions: Int
+    let deletions: Int
+    let totalLines: Int
 }

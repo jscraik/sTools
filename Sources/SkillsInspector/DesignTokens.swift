@@ -54,6 +54,13 @@ public enum DesignTokens {
             public static let purple = Color.dynamicColor(lightHex: "#934FF2", darkHex: "#BA8FF7")
             public static let pink = Color.dynamicColor(lightHex: "#E3008D", darkHex: "#FF6BC7")
         }
+        
+        public enum Status {
+            public static let success = Accent.green
+            public static let warning = Accent.orange
+            public static let error = Accent.red
+            public static let info = Accent.blue
+        }
     }
 
     public enum Typography {
@@ -157,3 +164,44 @@ private extension NSColor {
     }
 }
 #endif
+
+// MARK: - Typography View Extensions
+
+public extension View {
+    func heading1() -> some View {
+        self.font(.system(size: DesignTokens.Typography.Heading1.size,
+                         weight: DesignTokens.Typography.Heading1.weight))
+            .tracking(DesignTokens.Typography.Heading1.tracking)
+    }
+    
+    func heading2() -> some View {
+        self.font(.system(size: DesignTokens.Typography.Heading2.size,
+                         weight: DesignTokens.Typography.Heading2.weight))
+            .tracking(DesignTokens.Typography.Heading2.tracking)
+    }
+    
+    func heading3() -> some View {
+        self.font(.system(size: DesignTokens.Typography.Heading3.size,
+                         weight: DesignTokens.Typography.Heading3.weight))
+            .tracking(DesignTokens.Typography.Heading3.tracking)
+    }
+    
+    func bodyText(emphasis: Bool = false) -> some View {
+        self.font(.system(size: DesignTokens.Typography.Body.size,
+                         weight: emphasis ? DesignTokens.Typography.Body.emphasis : DesignTokens.Typography.Body.weight))
+            .tracking(DesignTokens.Typography.Body.tracking)
+    }
+    
+    func bodySmall(emphasis: Bool = false) -> some View {
+        self.font(.system(size: DesignTokens.Typography.BodySmall.size,
+                         weight: emphasis ? DesignTokens.Typography.BodySmall.emphasis : DesignTokens.Typography.BodySmall.weight))
+            .tracking(DesignTokens.Typography.BodySmall.tracking)
+    }
+    
+    func captionText(emphasis: Bool = false) -> some View {
+        self.font(.system(size: DesignTokens.Typography.Caption.size,
+                         weight: emphasis ? DesignTokens.Typography.Caption.emphasis : DesignTokens.Typography.Caption.weight))
+            .tracking(DesignTokens.Typography.Caption.tracking)
+    }
+}
+

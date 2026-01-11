@@ -37,7 +37,7 @@ struct SkillIndexRowView: View {
             if isExpanded {
                 LinearGradient(
                     colors: [
-                        entry.agent == .codex ? Color.blue.opacity(0.1) : Color.purple.opacity(0.1),
+                        entry.agent == .codex ? DesignTokens.Colors.Accent.blue.opacity(0.1) : DesignTokens.Colors.Accent.purple.opacity(0.1),
                         DesignTokens.Colors.Background.primary
                     ],
                     startPoint: .topLeading,
@@ -54,12 +54,12 @@ struct SkillIndexRowView: View {
             // Header: Skill name and agent icon
             HStack(alignment: .top, spacing: 12) {
                 Circle()
-                    .fill(entry.agent == .codex ? Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
+                    .fill(entry.agent == .codex ? DesignTokens.Colors.Accent.blue.opacity(0.15) : DesignTokens.Colors.Accent.purple.opacity(0.15))
                     .frame(width: 40, height: 40)
                     .overlay(
                         Image(systemName: entry.agent == .codex ? "cpu" : "brain")
                             .font(.system(size: 18))
-                            .foregroundStyle(entry.agent == .codex ? .blue : .purple)
+                            .foregroundStyle(entry.agent.color)
                     )
                 
                 VStack(alignment: .leading, spacing: 4) {
@@ -94,8 +94,8 @@ struct SkillIndexRowView: View {
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(entry.agent == .codex ? Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
-                    .foregroundStyle(entry.agent == .codex ? .blue : .purple)
+                    .background(entry.agent == .codex ? DesignTokens.Colors.Accent.blue.opacity(0.15) : DesignTokens.Colors.Accent.purple.opacity(0.15))
+                    .foregroundStyle(entry.agent.color)
                     .cornerRadius(6)
                 
                 // File location badge

@@ -1,0 +1,43 @@
+{
+  "configHash" : "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "entries" : {
+    "\/Users\/jamiecraik\/dev\/sTools\/.codex\/skills\/invalid-skill\/SKILL.md" : {
+      "cachedAt" : 1768139937.534167,
+      "contentHash" : "ac78b5bdab2bd6b3bc449c3d39114b9fa26de117127a1fcbe1100dfe9af683c1",
+      "filePath" : "\/Users\/jamiecraik\/dev\/sTools\/.codex\/skills\/invalid-skill\/SKILL.md",
+      "findings" : [
+        {
+          "agent" : "codex",
+          "column" : 1,
+          "line" : 1,
+          "message" : "Missing or invalid YAML frontmatter (must start with --- on line 1)",
+          "ruleID" : "frontmatter.missing",
+          "severity" : "error"
+        },
+        {
+          "agent" : "codex",
+          "message" : "Missing required frontmatter field: name",
+          "ruleID" : "frontmatter.missing_name",
+          "severity" : "error"
+        },
+        {
+          "agent" : "codex",
+          "message" : "Missing required frontmatter field: description",
+          "ruleID" : "frontmatter.missing_description",
+          "severity" : "error"
+        }
+      ],
+      "modificationTime" : 1768139934.118025
+    },
+    "\/Users\/jamiecraik\/dev\/sTools\/.codex\/skills\/test-skill\/SKILL.md" : {
+      "cachedAt" : 1768139921.296941,
+      "contentHash" : "a4b790bccb1cd0d76216a60f5a7de01ac695434c449bec1a5e2108b8e1f1d414",
+      "filePath" : "\/Users\/jamiecraik\/dev\/sTools\/.codex\/skills\/test-skill\/SKILL.md",
+      "findings" : [
+
+      ],
+      "modificationTime" : 1768139917.8791103
+    }
+  },
+  "schemaVersion" : 1
+}

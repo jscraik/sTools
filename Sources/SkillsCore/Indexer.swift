@@ -23,7 +23,7 @@ public struct SkillIndexEntry: Sendable, Hashable {
 public enum SkillIndexer {
     /// Generate a markdown Skills index from the provided roots.
     public static func generate(
-        codexRoot: URL?,
+        codexRoots: [URL],
         claudeRoot: URL?,
         include: IndexInclude = .both,
         recursive: Bool = false,
@@ -46,11 +46,11 @@ public enum SkillIndexer {
 
         switch include {
         case .codex:
-            if let c = codexRoot { collect(agent: .codex, root: c) }
+            codexRoots.forEach { collect(agent: .codex, root: $0) }
         case .claude:
             if let c = claudeRoot { collect(agent: .claude, root: c) }
         case .both:
-            if let c = codexRoot { collect(agent: .codex, root: c) }
+            codexRoots.forEach { collect(agent: .codex, root: $0) }
             if let c = claudeRoot { collect(agent: .claude, root: c) }
         }
 
@@ -60,6 +60,28 @@ public enum SkillIndexer {
             }
             return lhs.agent.rawValue < rhs.agent.rawValue
         }
+    }
+
+    /// Backwards-compatible single-root API.
+    public static func generate(
+        codexRoot: URL?,
+        claudeRoot: URL?,
+        include: IndexInclude = .both,
+        recursive: Bool = false,
+        maxDepth: Int? = nil,
+        excludes: [String] = [".git", ".system", "__pycache__", ".DS_Store"],
+        excludeGlobs: [String] = []
+    ) -> [SkillIndexEntry] {
+        let roots = codexRoot.map { [$0] } ?? []
+        return generate(
+            codexRoots: roots,
+            claudeRoot: claudeRoot,
+            include: include,
+            recursive: recursive,
+            maxDepth: maxDepth,
+            excludes: excludes,
+            excludeGlobs: excludeGlobs
+        )
     }
 
     /// Render markdown for a set of index entries. Optionally bump version and append a changelog line.

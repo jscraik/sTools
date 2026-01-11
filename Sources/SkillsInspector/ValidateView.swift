@@ -11,6 +11,7 @@ struct ValidateView: View {
     @State private var baselineMessage = ""
     @State private var showingExportDialog = false
     @State private var exportFormat: ExportFormat = .json
+    @State private var toastMessage: ToastMessage? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,11 +27,12 @@ struct ValidateView: View {
         .fileExporter(isPresented: $showingExportDialog, document: ExportDocument(findings: viewModel.findings, format: exportFormat), contentType: exportFormat.contentType, defaultFilename: "validation-report.\(exportFormat.fileExtension)") { result in
             switch result {
             case .success(let url):
-                print("Exported to \(url)")
+                toastMessage = ToastMessage(style: .success, message: "Exported to \(url.lastPathComponent)")
             case .failure(let error):
-                print("Export failed: \(error)")
+                toastMessage = ToastMessage(style: .error, message: "Export failed: \(error.localizedDescription)")
             }
         }
+        .toast($toastMessage)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -119,7 +121,7 @@ struct ValidateView: View {
                 
                 HStack(spacing: 4) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(errors > 0 ? .red : .secondary)
+                        .foregroundStyle(errors > 0 ? DesignTokens.Colors.Status.error : DesignTokens.Colors.Icon.secondary)
                     Text("\(errors)")
                 }
                 .font(.callout)
@@ -127,7 +129,7 @@ struct ValidateView: View {
                 
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(warnings > 0 ? .orange : .secondary)
+                        .foregroundStyle(warnings > 0 ? DesignTokens.Colors.Status.warning : DesignTokens.Colors.Icon.secondary)
                     Text("\(warnings)")
                 }
                 .font(.callout)
@@ -154,14 +156,15 @@ struct ValidateView: View {
             // Findings list panel (fixed width, non-resizable)
             Group {
                 if viewModel.isScanning && viewModel.findings.isEmpty {
-                    // Loading state
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text("Scanning...")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    // Loading state with skeletons
+                    List {
+                        ForEach(0..<5, id: \.self) { _ in
+                            SkeletonFindingRow()
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets())
+                        }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .listStyle(.inset)
                 } else if viewModel.findings.isEmpty && viewModel.lastScanAt != nil {
                     // Empty state after scan
                     EmptyStateView(
@@ -234,7 +237,7 @@ struct ValidateView: View {
                 .contextMenu {
                     contextMenuItems(for: finding)
                 }
-                .cardStyle(selected: finding.id == selectedFinding?.id, tint: finding.severity == .error ? .red : .orange)
+                .cardStyle(selected: finding.id == selectedFinding?.id, tint: finding.severity == .error ? DesignTokens.Colors.Status.error : DesignTokens.Colors.Status.warning)
         }
         .listStyle(.inset)
         .accessibilityLabel("Findings list")
@@ -322,8 +325,7 @@ struct ValidateView: View {
         
         do {
             try FindingActions.addToBaseline(finding, baselineURL: baselineURL)
-            baselineMessage = "Added to baseline:\n\(baselineURL.path)"
-            showingBaselineSuccess = true
+            toastMessage = ToastMessage(style: .success, message: "Added to baseline")
             
             // Refresh the scan to apply the new baseline
             Task {
@@ -331,8 +333,7 @@ struct ValidateView: View {
                 await viewModel.scan()
             }
         } catch {
-            baselineMessage = "Failed to add to baseline:\n\(error.localizedDescription)"
-            showingBaselineSuccess = true
+            toastMessage = ToastMessage(style: .error, message: "Failed to add to baseline: \(error.localizedDescription)")
         }
     }
     

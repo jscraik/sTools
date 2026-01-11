@@ -6,7 +6,7 @@ struct SkillsCtl: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "skillsctl",
         abstract: "Scan/validate/sync Codex + Claude SKILL.md directories.",
-        subcommands: [Scan.self, SyncCheck.self, Index.self, Completion.self]
+        subcommands: [Scan.self, Fix.self, SyncCheck.self, Index.self, Completion.self]
     )
 }
 
@@ -79,6 +79,9 @@ struct Scan: ParsableCommand {
     @Flag(name: .customLong("show-cache-stats"), help: "Show cache statistics after scan")
     var showCacheStats: Bool = false
 
+    @Flag(name: .customLong("telemetry"), help: "Output performance telemetry as JSON")
+    var telemetry: Bool = false
+
     func run() throws {
         var excludeSet: Set<String> = []
         if !disableDefaultExcludes {
@@ -100,6 +103,22 @@ struct Scan: ParsableCommand {
         }
 
         let config = ConfigLoader.loadConfig(explicitPath: configPath, repoRoot: repoPath.map(PathUtil.urlFromPath))
+        
+        // Validate config against schema if present
+        if let configPath = configPath, !configPath.isEmpty {
+            let configURL = URL(fileURLWithPath: PathUtil.expandTilde(configPath))
+            if let configData = try? Data(contentsOf: configURL),
+               let configJSON = String(data: configData, encoding: .utf8),
+               let schemaPath = Bundle.main.url(forResource: "config-schema", withExtension: "json", subdirectory: "docs"),
+               let schemaData = try? Data(contentsOf: schemaPath),
+               let schemaJSON = String(data: schemaData, encoding: .utf8) {
+                if !JSONValidator.validate(json: configJSON, schema: schemaJSON) {
+                    fputs("❌ Config file validation failed: \(configPath) does not match schema\n", stderr)
+                    throw ExitCode(2)
+                }
+            }
+        }
+        
         let baseline = ConfigLoader.loadBaseline(path: baselinePath ?? repoPath.map { PathUtil.urlFromPath($0).appendingPathComponent(".skillsctl/baseline.json").path })
         let ignores = ConfigLoader.loadIgnore(path: ignorePath ?? repoPath.map { PathUtil.urlFromPath($0).appendingPathComponent(".skillsctl/ignore.json").path })
 
@@ -233,6 +252,23 @@ struct Scan: ParsableCommand {
     }
 
     private func output(findings: [Finding], scannedCount: Int, stats: ScanStats? = nil) {
+        // Output telemetry if requested
+        if telemetry, let stats {
+            let telemetryData = ScanTelemetry(
+                scanDuration: 0, // Will be tracked in caller
+                stats: stats,
+                validationsByRule: [:]
+            )
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            if let data = try? encoder.encode(telemetryData),
+               let text = String(data: data, encoding: .utf8) {
+                fputs("\n--- TELEMETRY ---\n", stderr)
+                fputs(text, stderr)
+                fputs("\n--- END TELEMETRY ---\n", stderr)
+            }
+        }
+        
         switch format.lowercased() {
         case "json":
             let output = ScanOutput(
@@ -426,6 +462,146 @@ func runBlocking<T: Sendable>(_ operation: @Sendable @escaping () async -> T) ->
     }
     group.wait()
     return result!
+}
+
+// MARK: - Fix Command
+
+struct Fix: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Apply suggested fixes to SKILL.md files interactively")
+
+    @Option(name: .customLong("codex"), help: "Codex skills root (default: ~/.codex/skills)")
+    var codexPath: String = "~/.codex/skills"
+
+    @Option(name: .customLong("claude"), help: "Claude skills root (default: ~/.claude/skills)")
+    var claudePath: String = "~/.claude/skills"
+
+    @Option(name: .customLong("repo"), help: "Repo root; scans <repo>/.codex/skills and <repo>/.claude/skills")
+    var repoPath: String?
+
+    @Flag(name: .customLong("skip-codex"), help: "Skip Codex scan")
+    var skipCodex: Bool = false
+
+    @Flag(name: .customLong("skip-claude"), help: "Skip Claude scan")
+    var skipClaude: Bool = false
+
+    @Flag(name: .customLong("yes"), help: "Apply all fixes without prompting")
+    var applyAll: Bool = false
+
+    @Option(name: .customLong("rule"), help: "Only fix specific rule ID")
+    var ruleFilter: String?
+
+    func run() throws {
+        let roots: [ScanRoot]
+
+        if let repoPath {
+            let repoURL = PathUtil.urlFromPath(repoPath)
+            let codexURL = repoURL.appendingPathComponent(".codex/skills", isDirectory: true)
+            let claudeURL = repoURL.appendingPathComponent(".claude/skills", isDirectory: true)
+            var tempRoots: [ScanRoot] = []
+            if !skipCodex { tempRoots.append(.init(agent: .codex, rootURL: codexURL, recursive: false, maxDepth: nil)) }
+            if !skipClaude { tempRoots.append(.init(agent: .claude, rootURL: claudeURL, recursive: false, maxDepth: nil)) }
+            roots = tempRoots
+        } else {
+            var tempRoots: [ScanRoot] = []
+            if !skipCodex { tempRoots.append(.init(agent: .codex, rootURL: PathUtil.urlFromPath(codexPath), recursive: false, maxDepth: nil)) }
+            if !skipClaude { tempRoots.append(.init(agent: .claude, rootURL: PathUtil.urlFromPath(claudePath), recursive: false, maxDepth: nil)) }
+            roots = tempRoots
+        }
+
+        // Scan for findings
+        let result = runBlocking {
+            await AsyncSkillsScanner.scanAndValidate(
+                roots: roots,
+                excludeDirNames: [".git", ".system", "__pycache__", ".DS_Store"],
+                excludeGlobs: [],
+                policy: nil,
+                cacheManager: nil
+            )
+        }
+
+        var findings = result.findings
+
+        // Filter by rule if specified
+        if let ruleFilter {
+            findings = findings.filter { $0.ruleID == ruleFilter }
+        }
+
+        // Filter to only findings with suggested fixes
+        let fixableFindings = findings.filter { $0.suggestedFix != nil }
+
+        if fixableFindings.isEmpty {
+            Swift.print("✅ No fixable issues found")
+            return
+        }
+
+        Swift.print("Found \(fixableFindings.count) fixable issue(s)\n")
+
+        var appliedCount = 0
+        var skippedCount = 0
+        var failedCount = 0
+
+        for finding in fixableFindings {
+            guard let fix = finding.suggestedFix else { continue }
+
+            Swift.print("---")
+            Swift.print("📁 File: \(finding.fileURL.path)")
+            Swift.print("🔍 Rule: \(finding.ruleID)")
+            Swift.print("💬 Issue: \(finding.message)")
+            Swift.print("🔧 Fix: \(fix.description)")
+
+            if !applyAll {
+                Swift.print("\nApply this fix? [y/N/q] ", terminator: "")
+                fflush(stdout)
+                
+                guard let response = readLine()?.lowercased() else {
+                    skippedCount += 1
+                    continue
+                }
+
+                if response == "q" || response == "quit" {
+                    Swift.print("\nAborted by user")
+                    break
+                }
+
+                if response != "y" && response != "yes" {
+                    Swift.print("⏭️  Skipped")
+                    skippedCount += 1
+                    continue
+                }
+            }
+
+            let result = FixEngine.applyFix(fix)
+            switch result {
+            case .success:
+                Swift.print("✅ Applied")
+                appliedCount += 1
+            case .failed(let error):
+                Swift.print("❌ Failed: \(error)")
+                failedCount += 1
+            case .notApplicable:
+                Swift.print("⚠️  Not applicable")
+                skippedCount += 1
+            }
+            Swift.print()
+        }
+
+        Swift.print("\n--- Summary ---")
+        Swift.print("Applied: \(appliedCount)")
+        Swift.print("Skipped: \(skippedCount)")
+        Swift.print("Failed: \(failedCount)")
+    }
+
+    func runBlocking<T: Sendable>(_ operation: @Sendable @escaping () async -> T) -> T {
+        let group = DispatchGroup()
+        var result: T!
+        group.enter()
+        Task {
+            result = await operation()
+            group.leave()
+        }
+        group.wait()
+        return result!
+    }
 }
 
 struct Completion: ParsableCommand {

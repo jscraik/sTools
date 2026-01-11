@@ -3,9 +3,24 @@ import SkillsCore
 
 @MainActor
 final class InspectorViewModel: ObservableObject {
-    @Published var codexRoots: [URL]
-    @Published var claudeRoot: URL
-    @Published var recursive = false
+    @Published var codexRoots: [URL] {
+        didSet { persistSettings() }
+    }
+    @Published var claudeRoot: URL {
+        didSet { persistSettings() }
+    }
+    @Published var recursive = false {
+        didSet { persistSettings() }
+    }
+    @Published var excludeInput: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var excludeGlobInput: String = "" {
+        didSet { persistSettings() }
+    }
+    @Published var maxDepth: Int? = nil {
+        didSet { persistSettings() }
+    }
     @Published var watchMode = false {
         didSet {
             if watchMode {
@@ -28,44 +43,26 @@ final class InspectorViewModel: ObservableObject {
     private var currentScanID: UUID = UUID()
     private var fileWatcher: FileWatcher?
     private var lastWatchTrigger: Date = Date()
+    private let settingsKey = "com.stools.settings"
+
+    static let defaultExcludes = [".git", ".system", "__pycache__", ".DS_Store"]
+    private static let suspiciousPaths = ["/System", "/Library", "/usr", "/bin", "/sbin"]
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        
-        // Resolve symlinks and deduplicate paths
-        let potentialRoots: [URL] = [
-            home.appendingPathComponent(".codex/skills", isDirectory: true),
-            home.appendingPathComponent(".codex/public/skills", isDirectory: true)
-        ]
-        
-        // Resolve symlinks and filter to unique, existing directories
-        var seenPaths = Set<String>()
-        var resolvedRoots: [URL] = []
-        
-        for url in potentialRoots {
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            
-            // Resolve symlinks
-            let resolved = (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path))
-                .map { URL(fileURLWithPath: $0, isDirectory: true) }
-                ?? url
-            
-            let canonicalPath = resolved.standardized.path
-            if !seenPaths.contains(canonicalPath) {
-                seenPaths.insert(canonicalPath)
-                resolvedRoots.append(resolved)
-            }
-        }
-        
-        let primaryCodex = home.appendingPathComponent(".codex/skills", isDirectory: true)
-        if FileManager.default.fileExists(atPath: primaryCodex.path) {
-            codexRoots = [primaryCodex]
-        } else if resolvedRoots.isEmpty {
-            codexRoots = [primaryCodex]
+
+        if let data = UserDefaults.standard.data(forKey: settingsKey),
+           let saved = try? JSONDecoder().decode(UserSettings.self, from: data) {
+            codexRoots = saved.codexRoots.isEmpty ? Self.defaultCodexRoots(home: home) : saved.codexRoots
+            claudeRoot = saved.claudeRoot
+            recursive = saved.recursive
+            excludeInput = saved.excludeInput
+            excludeGlobInput = saved.excludeGlobInput
+            maxDepth = saved.maxDepth
         } else {
-            codexRoots = resolvedRoots
+            codexRoots = Self.defaultCodexRoots(home: home)
+            claudeRoot = home.appendingPathComponent(".claude/skills", isDirectory: true)
         }
-        claudeRoot = home.appendingPathComponent(".claude/skills", isDirectory: true)
     }
 
     /// Backwards-compatible single-root accessor for tests and legacy call sites.
@@ -78,6 +75,15 @@ final class InspectorViewModel: ObservableObject {
                 codexRoots[0] = newValue
             }
         }
+    }
+
+    var effectiveExcludes: [String] {
+        let user = excludeInput.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return Array(Set(Self.defaultExcludes).union(user))
+    }
+
+    var effectiveGlobExcludes: [String] {
+        excludeGlobInput.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
     func scan() async {
@@ -123,7 +129,7 @@ final class InspectorViewModel: ObservableObject {
             // Use async scanner
             let (findings, stats) = await AsyncSkillsScanner.scanAndValidate(
                 roots: roots,
-                excludeDirNames: [".git", ".system", "__pycache__", ".DS_Store"],
+                excludeDirNames: Set(Self.defaultExcludes),
                 excludeGlobs: [],
                 policy: nil,
                 cacheManager: cacheManager,
@@ -229,10 +235,67 @@ final class InspectorViewModel: ObservableObject {
         }
         cacheHits = 0
     }
+
+    func validateRoot(_ url: URL) -> Bool {
+        guard PathUtil.existsDir(url) else { return false }
+        let path = url.path
+        for suspicious in Self.suspiciousPaths {
+            if path.hasPrefix(suspicious) { return false }
+        }
+        return true
+    }
+
+    private func persistSettings() {
+        let settings = UserSettings(
+            codexRoots: codexRoots,
+            claudeRoot: claudeRoot,
+            recursive: recursive,
+            excludeInput: excludeInput,
+            excludeGlobInput: excludeGlobInput,
+            maxDepth: maxDepth
+        )
+        if let data = try? JSONEncoder().encode(settings) {
+            UserDefaults.standard.set(data, forKey: settingsKey)
+        }
+    }
+
+    private static func defaultCodexRoots(home: URL) -> [URL] {
+        let potentialRoots: [URL] = [
+            home.appendingPathComponent(".codex/skills", isDirectory: true),
+            home.appendingPathComponent(".codex/public/skills", isDirectory: true)
+        ]
+        var seenPaths = Set<String>()
+        var resolvedRoots: [URL] = []
+        for url in potentialRoots {
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            let resolved = (try? FileManager.default.destinationOfSymbolicLink(atPath: url.path))
+                .map { URL(fileURLWithPath: $0, isDirectory: true) }
+                ?? url
+            let canonicalPath = resolved.standardized.path
+            if !seenPaths.contains(canonicalPath) {
+                seenPaths.insert(canonicalPath)
+                resolvedRoots.append(resolved)
+            }
+        }
+        let primaryCodex = home.appendingPathComponent(".codex/skills", isDirectory: true)
+        if FileManager.default.fileExists(atPath: primaryCodex.path) {
+            return [primaryCodex]
+        }
+        return resolvedRoots.isEmpty ? [primaryCodex] : resolvedRoots
+    }
 }
 
 // Private helper for scan results with scan ID tracking
 private struct ScanResult: Sendable {
     let findings: [Finding]
     let scanID: UUID
+}
+
+private struct UserSettings: Codable {
+    let codexRoots: [URL]
+    let claudeRoot: URL
+    let recursive: Bool
+    let excludeInput: String
+    let excludeGlobInput: String
+    let maxDepth: Int?
 }

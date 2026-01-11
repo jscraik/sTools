@@ -6,35 +6,40 @@ final class IndexViewModel: ObservableObject {
     @Published var entries: [SkillIndexEntry] = []
     @Published var isGenerating = false
     @Published var include: IndexInclude = .both
-    @Published var recursive = false
     @Published var bump: IndexBump = .none
     @Published var changelogNote = ""
     @Published var generatedMarkdown = ""
     @Published var generatedVersion = ""
     @Published var existingVersion = ""
     @Published var expandedSkills: Set<String> = []
+    private var currentTask: Task<([SkillIndexEntry], String, String), Never>?
     
-    func generate(codexRoots: [URL], claudeRoot: URL) async {
+    func generate(
+        codexRoots: [URL],
+        claudeRoot: URL,
+        recursive: Bool,
+        excludes: [String],
+        excludeGlobs: [String]
+    ) async {
         isGenerating = true
+        currentTask?.cancel()
         
-        let codexRoot = codexRoots.first
         let claude = claudeRoot
         let includeFilter = include
-        let recursiveFlag = recursive
         let bumpType = bump
         let changelog = changelogNote
         let existingVer = existingVersion.isEmpty ? nil : existingVersion
         
-        let result = await Task(priority: .userInitiated) {
+        currentTask = Task(priority: .userInitiated) {
             if Task.isCancelled { return ([SkillIndexEntry](), "", "") }
             let entries = SkillIndexer.generate(
-                codexRoot: codexRoot,
+                codexRoots: codexRoots,
                 claudeRoot: claude,
                 include: includeFilter,
-                recursive: recursiveFlag,
+                recursive: recursive,
                 maxDepth: nil,
-                excludes: [".git", ".system", "__pycache__", ".DS_Store"],
-                excludeGlobs: []
+                excludes: excludes,
+                excludeGlobs: excludeGlobs
             )
             
             let (version, markdown) = SkillIndexer.renderMarkdown(
@@ -45,7 +50,8 @@ final class IndexViewModel: ObservableObject {
             )
             
             return (entries, version, markdown)
-        }.value
+        }
+        let result = await currentTask?.value ?? ([SkillIndexEntry](), "", "")
         if Task.isCancelled {
             isGenerating = false
             return
@@ -55,6 +61,7 @@ final class IndexViewModel: ObservableObject {
         generatedVersion = result.1
         generatedMarkdown = result.2
         isGenerating = false
+        currentTask = nil
     }
     
     func copyMarkdown() {
@@ -78,24 +85,38 @@ final class IndexViewModel: ObservableObject {
         }
         #endif
     }
+
+    func cancel() {
+        currentTask?.cancel()
+        isGenerating = false
+    }
 }
 
 struct IndexView: View {
     @ObservedObject var viewModel: IndexViewModel
     let codexRoots: [URL]
     let claudeRoot: URL
+    @Binding var recursive: Bool
+    let excludes: [String]
+    let excludeGlobs: [String]
     
     var body: some View {
         VStack(spacing: 0) {
             toolbar
             content
         }
+        .onReceive(NotificationCenter.default.publisher(for: .runScan)) { _ in
+            Task { await viewModel.generate(codexRoots: codexRoots, claudeRoot: claudeRoot, recursive: recursive, excludes: excludes, excludeGlobs: excludeGlobs) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cancelScan)) { _ in
+            viewModel.cancel()
+        }
     }
     
     private var toolbar: some View {
         HStack(spacing: 12) {
             Button {
-                Task { await viewModel.generate(codexRoots: codexRoots, claudeRoot: claudeRoot) }
+                Task { await viewModel.generate(codexRoots: codexRoots, claudeRoot: claudeRoot, recursive: recursive, excludes: excludes, excludeGlobs: excludeGlobs) }
             } label: {
                 Label(viewModel.isGenerating ? "Generating…" : "Generate", systemImage: "doc.badge.gearshape")
             }
@@ -113,7 +134,7 @@ struct IndexView: View {
             .pickerStyle(.segmented)
             .frame(width: 200)
             
-            Toggle("Recursive", isOn: $viewModel.recursive)
+            Toggle("Recursive", isOn: $recursive)
                 .toggleStyle(.switch)
                 .controlSize(.small)
             
@@ -156,19 +177,21 @@ struct IndexView: View {
             // Skills list (fixed width)
             Group {
                 if viewModel.isGenerating {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text("Generating index...")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    // Loading state with skeletons
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            ForEach(0..<5, id: \.self) { _ in
+                                SkeletonIndexRow()
+                            }
+                        }
+                        .padding()
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.entries.isEmpty {
                     EmptyStateView(
                         icon: "doc.text.magnifyingglass",
                         title: "Ready to Index",
                         message: "Generate a consolidated skills index from your Codex and Claude roots.",
-                        action: { Task { await viewModel.generate(codexRoots: codexRoots, claudeRoot: claudeRoot) } },
+                        action: { Task { await viewModel.generate(codexRoots: codexRoots, claudeRoot: claudeRoot, recursive: recursive, excludes: excludes, excludeGlobs: excludeGlobs) } },
                         actionLabel: "Generate Index"
                     )
                 } else {
@@ -221,9 +244,9 @@ struct IndexView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "cpu")
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(DesignTokens.Colors.Accent.blue)
                             Text("Codex Skills")
-                                .font(.system(size: DesignTokens.Typography.Heading3.size, weight: DesignTokens.Typography.Heading3.weight))
+                                .heading3()
                             Text("(\(viewModel.entries.filter { $0.agent == .codex }.count))")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -252,9 +275,9 @@ struct IndexView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "brain")
-                                .foregroundStyle(.purple)
+                                .foregroundStyle(DesignTokens.Colors.Accent.purple)
                             Text("Claude Skills")
-                                .font(.system(size: DesignTokens.Typography.Heading3.size, weight: DesignTokens.Typography.Heading3.weight))
+                                .heading3()
                             Text("(\(viewModel.entries.filter { $0.agent == .claude }.count))")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)

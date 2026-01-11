@@ -4,6 +4,8 @@ import SkillsCore
 /// A reusable row view for displaying a finding in a list.
 struct FindingRowView: View {
     let finding: Finding
+    @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -21,7 +23,7 @@ struct FindingRowView: View {
                         .fontWeight(.medium)
                     
                     Text("•")
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(DesignTokens.Colors.Text.tertiary)
                     
                     Label(finding.agent.rawValue, systemImage: finding.agent.icon)
                         .font(.caption2)
@@ -31,10 +33,10 @@ struct FindingRowView: View {
                     if let fix = finding.suggestedFix {
                         Label(fix.automated ? "Auto-fix" : "Fix", systemImage: fix.automated ? "wand.and.stars" : "wrench")
                             .font(.caption2)
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(DesignTokens.Colors.Accent.blue)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)
-                            .background(.blue.opacity(0.1))
+                            .background(DesignTokens.Colors.Accent.blue.opacity(0.1))
                             .cornerRadius(3)
                     }
                 }
@@ -52,14 +54,19 @@ struct FindingRowView: View {
                         .fontWeight(.medium)
                     if let line = finding.line {
                         Text(":\(line)")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
                     }
                 }
                 .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DesignTokens.Colors.Text.secondary)
             }
         }
         .padding(.vertical, 6)
+        .scaleEffect(isHovered && !reduceMotion ? 1.01 : 1.0)
+        .animation(reduceMotion ? .none : .easeInOut(duration: 0.15), value: isHovered)
+        .onHover { hovering in
+            isHovered = hovering
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(finding.severity.rawValue): \(finding.message)")
         .accessibilityHint("In \(finding.fileURL.lastPathComponent)")

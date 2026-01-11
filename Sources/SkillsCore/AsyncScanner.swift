@@ -150,3 +150,23 @@ public struct ScanStats: Sendable {
         return Double(cacheHits) / Double(scannedFiles)
     }
 }
+
+// MARK: - Scan Telemetry
+
+public struct ScanTelemetry: Codable, Sendable {
+    public let scanDuration: TimeInterval
+    public let totalFiles: Int
+    public let cacheHits: Int
+    public let cacheHitRate: Double
+    public let filesPerSecond: Double
+    public let validationsByRule: [String: Int]
+    
+    public init(scanDuration: TimeInterval, stats: ScanStats, validationsByRule: [String: Int] = [:]) {
+        self.scanDuration = scanDuration
+        self.totalFiles = stats.scannedFiles
+        self.cacheHits = stats.cacheHits
+        self.cacheHitRate = stats.cacheHitRate
+        self.filesPerSecond = scanDuration > 0 ? Double(stats.scannedFiles) / scanDuration : 0
+        self.validationsByRule = validationsByRule
+    }
+}

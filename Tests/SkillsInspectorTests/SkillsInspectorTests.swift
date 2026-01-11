@@ -6,15 +6,18 @@ import XCTest
 final class InspectorViewModelTests: XCTestCase {
     var sut: InspectorViewModel!
     var tempDirectory: URL!
+    private let settingsKey = "com.stools.settings"
 
     override func setUp() async throws {
         try await super.setUp()
+        UserDefaults.standard.removeObject(forKey: settingsKey)
         sut = InspectorViewModel()
         tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("ViewModelTests_\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
     }
 
     override func tearDown() async throws {
+        UserDefaults.standard.removeObject(forKey: settingsKey)
         sut = nil
         try? FileManager.default.removeItem(at: tempDirectory)
         try await super.tearDown()
@@ -515,5 +518,105 @@ final class SyncViewModelTests: XCTestCase {
         )
 
         XCTAssertEqual(sut.report.onlyInCodex, ["included"])
+    }
+}
+
+final class IndexerAndSettingsTests: XCTestCase {
+    var tempDirectory: URL!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        tempDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("IndexerTests_\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        UserDefaults.standard.removeObject(forKey: "com.stools.settings")
+    }
+
+    override func tearDown() async throws {
+        try? FileManager.default.removeItem(at: tempDirectory)
+        UserDefaults.standard.removeObject(forKey: "com.stools.settings")
+        try await super.tearDown()
+    }
+
+    func testGenerateIndexesAcrossMultipleCodexRoots() async throws {
+        let codexRootA = tempDirectory.appendingPathComponent("codexA", isDirectory: true)
+        let codexRootB = tempDirectory.appendingPathComponent("codexB", isDirectory: true)
+        try FileManager.default.createDirectory(at: codexRootA, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: codexRootB, withIntermediateDirectories: true)
+
+        let skillA = codexRootA.appendingPathComponent("skillA", isDirectory: true)
+        try FileManager.default.createDirectory(at: skillA, withIntermediateDirectories: true)
+        try """
+        ---
+        name: skillA
+        description: from A
+        ---
+        """.write(to: skillA.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+
+        let skillB = codexRootB.appendingPathComponent("skillB", isDirectory: true)
+        try FileManager.default.createDirectory(at: skillB, withIntermediateDirectories: true)
+        try """
+        ---
+        name: skillB
+        description: from B
+        ---
+        """.write(to: skillB.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+
+        let defaults = await MainActor.run { InspectorViewModel.defaultExcludes }
+        let entries = SkillIndexer.generate(
+            codexRoots: [codexRootA, codexRootB],
+            claudeRoot: nil,
+            include: .codex,
+            recursive: true,
+            excludes: defaults,
+            excludeGlobs: []
+        )
+
+        let names = Set(entries.map { $0.name })
+        XCTAssertEqual(names, Set(["skillA", "skillB"]))
+    }
+
+    func testUserSettingsPersistAcrossInstances() async throws {
+        let codexRoot = tempDirectory.appendingPathComponent("codexPersist", isDirectory: true)
+        let claudeRoot = tempDirectory.appendingPathComponent("claudePersist", isDirectory: true)
+        try FileManager.default.createDirectory(at: codexRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: claudeRoot, withIntermediateDirectories: true)
+
+        // Save settings on the main actor
+        await MainActor.run {
+            let vm = InspectorViewModel()
+            vm.codexRoots = [codexRoot]
+            vm.claudeRoot = claudeRoot
+            vm.recursive = true
+            vm.excludeInput = "tmp,build"
+            vm.excludeGlobInput = "*.tmp"
+            vm.maxDepth = 2
+        }
+
+        // Load settings and capture values on the main actor
+        var loadedCodex: URL?
+        var loadedClaude: URL?
+        var loadedRecursive = false
+        var loadedExcludes: [String] = []
+        var loadedGlobExcludes: [String] = []
+        var loadedMaxDepth: Int?
+        var defaults: [String] = []
+
+        await MainActor.run {
+            let loaded = InspectorViewModel()
+            loadedCodex = loaded.codexRoots.first
+            loadedClaude = loaded.claudeRoot
+            loadedRecursive = loaded.recursive
+            loadedExcludes = loaded.effectiveExcludes
+            loadedGlobExcludes = loaded.effectiveGlobExcludes
+            loadedMaxDepth = loaded.maxDepth
+            defaults = InspectorViewModel.defaultExcludes
+        }
+
+        XCTAssertEqual(loadedCodex, codexRoot)
+        XCTAssertEqual(loadedClaude, claudeRoot)
+        XCTAssertTrue(loadedRecursive)
+        XCTAssertEqual(Set(loadedExcludes), Set(defaults + ["tmp", "build"]))
+        XCTAssertEqual(loadedGlobExcludes, ["*.tmp"])
+        XCTAssertEqual(loadedMaxDepth, 2)
     }
 }

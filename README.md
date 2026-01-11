@@ -60,14 +60,23 @@ skillsctl scan --repo . --no-cache
 # Control parallelism (default: CPU count)
 skillsctl scan --repo . --jobs 4
 
-# Show cache statistics
-skillsctl scan --repo . --show-cache-stats
+# Show cache statistics and performance telemetry
+skillsctl scan --repo . --show-cache-stats --telemetry
 
 # Skip one side
 skillsctl scan --repo . --skip-claude
 
 # Turn off default excludes (.git, .system, __pycache__, .DS_Store)
 skillsctl scan --repo . --no-default-excludes
+
+# Interactive fix mode - apply suggested fixes with confirmation
+skillsctl fix --repo . --interactive
+
+# Auto-apply all fixes without prompting
+skillsctl fix --repo . --yes
+
+# Fix only specific rule violations
+skillsctl fix --repo . --rule frontmatter.missing_name
 
 # Sync-check
 skillsctl sync-check --repo .
@@ -76,7 +85,7 @@ skillsctl sync-check --repo .
 skillsctl index --repo . --write --bump patch
 ```
 
-Common flags: `--config <path>` (defaults to `.skillsctl/config.json`), `--baseline <path>` (defaults to `.skillsctl/baseline.json`), `--ignore <path>` (defaults to `.skillsctl/ignore.json`), `--plain`, `--log-level <level>`, `--schema-version 1`, `--allow-empty`, `--recursive`, `--max-depth <n>`, `--exclude <name>`, `--exclude-glob <pattern>`, `--format text|json`.
+Common flags: `--config <path>` (defaults to `.skillsctl/config.json`), `--baseline <path>` (defaults to `.skillsctl/baseline.json`), `--ignore <path>` (defaults to `.skillsctl/ignore.json`), `--plain`, `--log-level <level>`, `--schema-version 1`, `--allow-empty`, `--recursive`, `--max-depth <n>`, `--exclude <name>`, `--exclude-glob <pattern>`, `--format text|json`, `--telemetry`.
 
 Exit codes: `0` success; `1` when validation errors exist or no skills appear without `--allow-empty`; `2` usage/config error.
 
@@ -157,6 +166,75 @@ CLI defaults:
 - Shows only changed results
 - CLI: `--watch` flag
 - UI: Toggle in toolbar
+
+## New Features
+
+### Performance Telemetry
+
+Track and analyze scan performance with detailed metrics:
+
+```bash
+skillsctl scan --repo . --telemetry
+```
+
+Outputs JSON telemetry including:
+
+- Scan duration
+- Total files scanned
+- Cache hit rate and count
+- Files processed per second
+- Validation counts by rule
+
+### Interactive Fix Mode
+
+Apply suggested fixes with confirmation prompts:
+
+```bash
+# Interactive mode (default)
+skillsctl fix --repo . --interactive
+
+# Auto-apply all fixes
+skillsctl fix --repo . --yes
+
+# Fix specific rule violations
+skillsctl fix --repo . --rule frontmatter.missing_name
+```
+
+Features:
+
+- Lists all findings with suggested fixes
+- Prompts for confirmation before applying each fix
+- Leverages FixEngine for safe file modifications
+- Summary report of applied/skipped/failed fixes
+
+### Pluggable Rule System
+
+Validation rules are now protocol-based, enabling:
+
+- Custom validation rules via `ValidationRule` protocol
+- Agent-specific rules (Codex vs Claude)
+- Configurable severity levels
+- Rule registry for easy management
+
+Built-in rules include frontmatter validation, length checks, naming patterns, and symlink warnings.
+
+### JSON Schema Validation
+
+Config files are validated against schemas on load:
+
+- Validates `config.json`, `baseline.json`, and `ignore.json`
+- Clear error messages when validation fails
+- Schemas located in `docs/` directory
+- Prevents invalid configuration causing cryptic errors
+
+### UI Quick Fixes
+
+The SkillsInspector app now supports:
+
+- "Apply Fix" button in finding detail view
+- Preview fix changes before applying
+- Automatic re-scan after successful fix
+- Alert notifications for success/failure
 
 ## DocC
 

@@ -10,6 +10,7 @@ struct FindingDetailView: View {
     @State private var fixSucceeded = false
     @State private var showPreview = false
     @State private var markdownContent: String?
+    @State private var toastMessage: ToastMessage? = nil
 
     var body: some View {
         ScrollView {
@@ -206,16 +207,7 @@ struct FindingDetailView: View {
             }
             .padding(20)
         }
-        .alert("Baseline Updated", isPresented: $showingBaselineSuccess) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(baselineMessage)
-        }
-        .alert(fixSucceeded ? "Fix Applied" : "Fix Failed", isPresented: $showingFixResult) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(fixResultMessage)
-        }
+        .toast($toastMessage)
     }
 
     private func detailRow(icon: String, label: String, value: String, color: Color = .primary) -> some View {
@@ -246,11 +238,9 @@ struct FindingDetailView: View {
         
         do {
             try FindingActions.addToBaseline(finding, baselineURL: baselineURL)
-            baselineMessage = "Added to baseline:\n\(baselineURL.path)"
-            showingBaselineSuccess = true
+            toastMessage = ToastMessage(style: .success, message: "Added to baseline")
         } catch {
-            baselineMessage = "Failed to add to baseline:\n\(error.localizedDescription)"
-            showingBaselineSuccess = true
+            toastMessage = ToastMessage(style: .error, message: "Failed to add to baseline")
         }
     }
     
@@ -270,16 +260,12 @@ struct FindingDetailView: View {
         let result = FixEngine.applyFix(fix)
         switch result {
         case .success:
-            fixSucceeded = true
-            fixResultMessage = "Fix applied successfully! Re-scan to verify."
+            toastMessage = ToastMessage(style: .success, message: "Fix applied successfully! Re-scan to verify.")
         case .failed(let error):
-            fixSucceeded = false
-            fixResultMessage = "Failed to apply fix:\n\(error)"
+            toastMessage = ToastMessage(style: .error, message: "Failed to apply fix: \(error)")
         case .notApplicable:
-            fixSucceeded = false
-            fixResultMessage = "Fix is not applicable to current file state."
+            toastMessage = ToastMessage(style: .warning, message: "Fix is not applicable to current file state.")
         }
-        showingFixResult = true
     }
     
     private func loadMarkdownContent() {

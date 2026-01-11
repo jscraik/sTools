@@ -25,18 +25,30 @@ struct ContentView: View {
                     searchText: $searchText
                 )
             case .stats:
-                StatsView(viewModel: viewModel)
+                StatsView(
+                    viewModel: viewModel,
+                    mode: $mode,
+                    severityFilter: $severityFilter,
+                    agentFilter: $agentFilter
+                )
             case .sync:
                 SyncView(
                     viewModel: syncVM,
-                    codexRoot: viewModel.codexRoots.first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/skills"),
-                    claudeRoot: viewModel.claudeRoot
+                    codexRoots: $viewModel.codexRoots,
+                    claudeRoot: $viewModel.claudeRoot,
+                    recursive: $viewModel.recursive,
+                    maxDepth: $viewModel.maxDepth,
+                    excludeInput: $viewModel.excludeInput,
+                    excludeGlobInput: $viewModel.excludeGlobInput
                 )
             case .index:
                 IndexView(
                     viewModel: indexVM,
                     codexRoots: viewModel.codexRoots,
-                    claudeRoot: viewModel.claudeRoot
+                    claudeRoot: viewModel.claudeRoot,
+                    recursive: $viewModel.recursive,
+                    excludes: viewModel.effectiveExcludes,
+                    excludeGlobs: viewModel.effectiveGlobExcludes
                 )
             }
         }
@@ -52,70 +64,118 @@ struct ContentView: View {
         List(selection: $mode) {
             Section {
                 NavigationLink(value: AppMode.validate) {
-                    Label("Validate", systemImage: "checkmark.circle")
+                    HStack {
+                        Image(systemName: "checkmark.circle")
+                            .frame(width: 20)
+                            .foregroundStyle(mode == .validate ? .accentColor : DesignTokens.Colors.Icon.secondary)
+                        Text("Validate")
+                            .fontWeight(mode == .validate ? .medium : .regular)
+                        Spacer()
+                        if !viewModel.findings.isEmpty {
+                            let errorCount = viewModel.findings.filter { $0.severity == .error }.count
+                            if errorCount > 0 {
+                                Text("\(errorCount)")
+                                    .captionText(emphasis: true)
+                                    .foregroundStyle(DesignTokens.Colors.Status.error)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(DesignTokens.Colors.Status.error.opacity(0.15))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
                 }
-                .padding(.leading, 4)
                 NavigationLink(value: AppMode.stats) {
-                    Label("Statistics", systemImage: "chart.bar.fill")
+                    HStack {
+                        Image(systemName: "chart.bar.fill")
+                            .frame(width: 20)
+                            .foregroundStyle(mode == .stats ? .accentColor : DesignTokens.Colors.Icon.secondary)
+                        Text("Statistics")
+                            .fontWeight(mode == .stats ? .medium : .regular)
+                        Spacer()
+                    }
                 }
-                .padding(.leading, 4)
                 NavigationLink(value: AppMode.sync) {
-                    Label("Sync", systemImage: "arrow.2.squarepath")
+                    HStack {
+                        Image(systemName: "arrow.2.squarepath")
+                            .frame(width: 20)
+                            .foregroundStyle(mode == .sync ? .accentColor : DesignTokens.Colors.Icon.secondary)
+                        Text("Sync")
+                            .fontWeight(mode == .sync ? .medium : .regular)
+                        Spacer()
+                    }
                 }
-                .padding(.leading, 4)
                 NavigationLink(value: AppMode.index) {
-                    Label("Index", systemImage: "doc.text")
+                    HStack {
+                        Image(systemName: "doc.text")
+                            .frame(width: 20)
+                            .foregroundStyle(mode == .index ? .accentColor : DesignTokens.Colors.Icon.secondary)
+                        Text("Index")
+                            .fontWeight(mode == .index ? .medium : .regular)
+                        Spacer()
+                    }
                 }
-                .padding(.leading, 4)
             } header: {
                 Text("Mode")
-                    .padding(.leading, 4)
             }
 
             Section {
-                ForEach(Array(viewModel.codexRoots.enumerated()), id: \.offset) { _, url in
-                    HStack(spacing: 6) {
-                        Image(systemName: "folder.fill")
-                            .foregroundStyle(.orange)
-                            .frame(width: 16)
-                        Text(url.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
+                ForEach(Array(viewModel.codexRoots.enumerated()), id: \.offset) { index, url in
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair) {
+                        RootRow(title: "Codex \(index + 1)", url: url) { newURL in
+                            applyRootChange(index: index, newURL: newURL, isClaude: false)
+                        }
+                        HStack(spacing: DesignTokens.Spacing.xxxs) {
+                            statusDot(for: url)
+                            Text(url.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
+                                .font(.system(.caption, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            if viewModel.codexRoots.count > 1 {
+                                Button(role: .destructive) {
+                                    viewModel.codexRoots.remove(at: index)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Remove Codex root")
+                            }
+                        }
+                    }
+                }
+
+                Button {
+                    if let picked = pickFolder() {
+                        applyRootChange(index: viewModel.codexRoots.count, newURL: picked, isClaude: false, allowAppend: true)
+                    }
+                } label: {
+                    Label("Add Codex Root", systemImage: "plus.circle")
+                }
+                .buttonStyle(.borderless)
+                
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair) {
+                    RootRow(title: "Claude", url: viewModel.claudeRoot) { newURL in
+                        applyRootChange(index: 0, newURL: newURL, isClaude: true)
+                    }
+                    HStack(spacing: DesignTokens.Spacing.xxxs) {
+                        statusDot(for: viewModel.claudeRoot, tint: DesignTokens.Colors.Accent.purple)
+                        Text(viewModel.claudeRoot.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
                             .font(.system(.caption, design: .monospaced))
                             .lineLimit(1)
-                            .truncationMode(.tail)
+                            .truncationMode(.middle)
                         Spacer()
-                        Image(systemName: FileManager.default.fileExists(atPath: url.path) ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .foregroundStyle(FileManager.default.fileExists(atPath: url.path) ? .green : .red)
-                            .font(.caption2)
                     }
-                    .padding(.leading, 4)
                 }
-                
-                HStack(spacing: 6) {
-                    Image(systemName: "folder.fill")
-                        .foregroundStyle(.purple)
-                        .frame(width: 16)
-                    Text(viewModel.claudeRoot.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
-                        .font(.system(.caption, design: .monospaced))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Spacer()
-                    Image(systemName: FileManager.default.fileExists(atPath: viewModel.claudeRoot.path) ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(FileManager.default.fileExists(atPath: viewModel.claudeRoot.path) ? .green : .red)
-                        .font(.caption2)
-                }
-                .padding(.leading, 4)
             } header: {
                 Text("Scan Roots")
-                    .padding(.leading, 4)
             }
             
             Section {
                 Toggle("Recursive", isOn: $viewModel.recursive)
                     .toggleStyle(.switch)
-                    .padding(.leading, 4)
             } header: {
                 Text("Options")
-                    .padding(.leading, 4)
             }
 
             if mode == .validate {
@@ -129,7 +189,6 @@ struct ContentView: View {
                         Label("Severity", systemImage: "exclamationmark.triangle")
                     }
                     .pickerStyle(.menu)
-                    .padding(.leading, 4)
 
                     Picker(selection: $agentFilter) {
                         Text("All").tag(AgentKind?.none)
@@ -139,10 +198,8 @@ struct ContentView: View {
                         Label("Agent", systemImage: "person.2")
                     }
                     .pickerStyle(.menu)
-                    .padding(.leading, 4)
                 } header: {
                     Text("Filters")
-                        .padding(.leading, 4)
                 }
             }
         }
@@ -150,26 +207,43 @@ struct ContentView: View {
         .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 350)
     }
 
-    private func validateRoot(_ url: URL) -> Bool {
-        // Check if URL points to a valid directory
-        guard PathUtil.existsDir(url) else {
-            rootErrorMessage = "The selected path is not a valid directory:\n\n\(url.path)\n\nPlease select an existing directory."
+    private func applyRootChange(index: Int, newURL: URL, isClaude: Bool, allowAppend: Bool = false) {
+        guard viewModel.validateRoot(newURL) else {
+            rootErrorMessage = "The selected path is not a valid skills directory:\n\(newURL.path)"
             showingRootError = true
-            return false
+            return
         }
-
-        // Check if URL is within expected bounds (prevent accidentally selecting system paths)
-        let path = url.path
-        let suspiciousPaths = ["/System", "/Library", "/usr", "/bin", "/sbin"]
-        for suspicious in suspiciousPaths {
-            if path.hasPrefix(suspicious) {
-                rootErrorMessage = "The selected path appears to be a system directory:\n\n\(url.path)\n\nThis is likely not a skills root directory."
-                showingRootError = true
-                return false
-            }
+        if isClaude {
+            viewModel.claudeRoot = newURL
+            return
         }
+        if allowAppend && index >= viewModel.codexRoots.count {
+            viewModel.codexRoots.append(newURL)
+        } else if index < viewModel.codexRoots.count {
+            viewModel.codexRoots[index] = newURL
+        }
+    }
+    
+    private func statusDot(for url: URL, tint: Color = DesignTokens.Colors.Accent.orange) -> some View {
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        return Image(systemName: exists ? "checkmark.circle.fill" : "xmark.circle.fill")
+            .foregroundStyle(exists ? DesignTokens.Colors.Status.success : DesignTokens.Colors.Status.error)
+            .help(exists ? "Directory exists" : "Directory missing")
+            .font(.caption2)
+    }
 
-        return true
+    private func pickFolder() -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.showsHiddenFiles = true
+        panel.canCreateDirectories = false
+        panel.title = "Select Skills Root Directory"
+        panel.prompt = "Select"
+        panel.message = "Choose the root directory containing skill folders (SKILL.md files)"
+
+        return panel.runModal() == .OK ? panel.url : nil
     }
 }
 

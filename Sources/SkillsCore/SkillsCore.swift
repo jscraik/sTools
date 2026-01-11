@@ -377,10 +377,288 @@ public enum SkillLoader {
     }
 }
 
+// MARK: - Validation Rules
+
+/// Protocol for pluggable validation rules
+public protocol ValidationRule: Sendable {
+    /// Unique identifier for this rule
+    var ruleID: String { get }
+    
+    /// Human-readable description of what this rule validates
+    var description: String { get }
+    
+    /// Which agent(s) this rule applies to (nil means all agents)
+    var appliesToAgent: AgentKind? { get }
+    
+    /// Default severity for violations of this rule
+    var defaultSeverity: Severity { get }
+    
+    /// Validate a skill document and return findings
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding]
+}
+
+/// Registry for managing validation rules
+public struct ValidationRuleRegistry: Sendable {
+    private let rules: [any ValidationRule]
+    
+    public init(rules: [any ValidationRule] = defaultRules()) {
+        self.rules = rules
+    }
+    
+    /// Validate a document using all applicable rules
+    public func validate(doc: SkillDoc, policy: SkillsConfig.Policy? = nil) -> [Finding] {
+        var findings: [Finding] = []
+        
+        for rule in rules {
+            // Skip rules that don't apply to this agent
+            if let targetAgent = rule.appliesToAgent, targetAgent != doc.agent {
+                continue
+            }
+            
+            findings.append(contentsOf: rule.validate(doc: doc, policy: policy))
+        }
+        
+        return findings
+    }
+    
+    /// Default built-in validation rules
+    public static func defaultRules() -> [any ValidationRule] {
+        [
+            FrontmatterMissingRule(),
+            FrontmatterMissingNameRule(),
+            FrontmatterMissingDescriptionRule(),
+            CodexNameLengthRule(),
+            CodexDescriptionLengthRule(),
+            CodexSymlinkRule(),
+            ClaudeNamePatternRule(),
+            ClaudeNameMatchesDirRule(),
+            ClaudeDescriptionLengthRule(),
+            ClaudeLengthWarningRule()
+        ]
+    }
+}
+
+// MARK: - Built-in Rules
+
+struct FrontmatterMissingRule: ValidationRule {
+    let ruleID = "frontmatter.missing"
+    let description = "YAML frontmatter must start with --- on line 1"
+    let appliesToAgent: AgentKind? = nil
+    let defaultSeverity: Severity = .error
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        guard !doc.hasFrontmatter else { return [] }
+        return [Finding(
+            ruleID: ruleID,
+            severity: defaultSeverity,
+            agent: doc.agent,
+            fileURL: doc.skillFileURL,
+            message: "Missing or invalid YAML frontmatter (must start with --- on line 1)",
+            line: 1,
+            column: 1
+        )]
+    }
+}
+
+struct FrontmatterMissingNameRule: ValidationRule {
+    let ruleID = "frontmatter.missing_name"
+    let description = "Frontmatter must include a name field"
+    let appliesToAgent: AgentKind? = nil
+    let defaultSeverity: Severity = .error
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        let name = (doc.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard name.isEmpty else { return [] }
+        return [Finding(
+            ruleID: ruleID,
+            severity: defaultSeverity,
+            agent: doc.agent,
+            fileURL: doc.skillFileURL,
+            message: "Missing required frontmatter field: name",
+            line: doc.frontmatterStartLine > 0 ? doc.frontmatterStartLine + 1 : nil,
+            column: nil
+        )]
+    }
+}
+
+struct FrontmatterMissingDescriptionRule: ValidationRule {
+    let ruleID = "frontmatter.missing_description"
+    let description = "Frontmatter must include a description field"
+    let appliesToAgent: AgentKind? = nil
+    let defaultSeverity: Severity = .error
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        let desc = (doc.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard desc.isEmpty else { return [] }
+        return [Finding(
+            ruleID: ruleID,
+            severity: defaultSeverity,
+            agent: doc.agent,
+            fileURL: doc.skillFileURL,
+            message: "Missing required frontmatter field: description",
+            line: doc.frontmatterStartLine > 0 ? doc.frontmatterStartLine + 2 : nil,
+            column: nil
+        )]
+    }
+}
+
+struct CodexNameLengthRule: ValidationRule {
+    let ruleID = "codex.name.max_length"
+    let description = "Codex skill name must not exceed 100 characters"
+    let appliesToAgent: AgentKind? = .codex
+    let defaultSeverity: Severity = .error
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        let name = (doc.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty && name.count > 100 else { return [] }
+        return [Finding(
+            ruleID: ruleID,
+            severity: defaultSeverity,
+            agent: .codex,
+            fileURL: doc.skillFileURL,
+            message: "Codex: name exceeds 100 characters",
+            line: doc.frontmatterStartLine > 0 ? doc.frontmatterStartLine + 1 : nil,
+            column: nil
+        )]
+    }
+}
+
+struct CodexDescriptionLengthRule: ValidationRule {
+    let ruleID = "codex.description.max_length"
+    let description = "Codex skill description must not exceed 500 characters"
+    let appliesToAgent: AgentKind? = .codex
+    let defaultSeverity: Severity = .error
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        let desc = (doc.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !desc.isEmpty && desc.count > 500 else { return [] }
+        return [Finding(
+            ruleID: ruleID,
+            severity: defaultSeverity,
+            agent: .codex,
+            fileURL: doc.skillFileURL,
+            message: "Codex: description exceeds 500 characters",
+            line: doc.frontmatterStartLine > 0 ? doc.frontmatterStartLine + 2 : nil,
+            column: nil
+        )]
+    }
+}
+
+struct CodexSymlinkRule: ValidationRule {
+    let ruleID = "codex.symlinked_dir"
+    let description = "Codex may ignore symlinked skill directories"
+    let appliesToAgent: AgentKind? = .codex
+    let defaultSeverity: Severity = .error
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        guard doc.isSymlinkedDir else { return [] }
+        let severity = policy?.codexSymlinkSeverity ?? defaultSeverity
+        return [Finding(
+            ruleID: ruleID,
+            severity: severity,
+            agent: .codex,
+            fileURL: doc.skillFileURL,
+            message: "Codex: skill directory is a symlink and may be ignored"
+        )]
+    }
+}
+
+struct ClaudeNamePatternRule: ValidationRule {
+    let ruleID = "claude.name.pattern"
+    let description = "Claude skill name must match ^[a-z0-9-]{1,64}$"
+    let appliesToAgent: AgentKind? = .claude
+    let defaultSeverity: Severity = .error
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        let name = (doc.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return [] }
+        let ok = name.range(of: #"^[a-z0-9-]{1,64}$"#, options: .regularExpression) != nil
+        guard !ok else { return [] }
+        return [Finding(
+            ruleID: ruleID,
+            severity: defaultSeverity,
+            agent: .claude,
+            fileURL: doc.skillFileURL,
+            message: "Claude: name must match ^[a-z0-9-]{1,64}$",
+            line: doc.frontmatterStartLine > 0 ? doc.frontmatterStartLine + 1 : nil,
+            column: nil
+        )]
+    }
+}
+
+struct ClaudeNameMatchesDirRule: ValidationRule {
+    let ruleID = "claude.name.matches_dir"
+    let description = "Claude skill directory name should match skill name"
+    let appliesToAgent: AgentKind? = .claude
+    let defaultSeverity: Severity = .warning
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        let name = (doc.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return [] }
+        let dirName = doc.skillDirURL.lastPathComponent
+        guard dirName != name else { return [] }
+        return [Finding(
+            ruleID: ruleID,
+            severity: defaultSeverity,
+            agent: .claude,
+            fileURL: doc.skillFileURL,
+            message: "Claude: directory name '\(dirName)' should match skill name '\(name)'"
+        )]
+    }
+}
+
+struct ClaudeDescriptionLengthRule: ValidationRule {
+    let ruleID = "claude.description.max_length"
+    let description = "Claude skill description must not exceed 1024 characters"
+    let appliesToAgent: AgentKind? = .claude
+    let defaultSeverity: Severity = .error
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        let desc = (doc.description ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !desc.isEmpty && desc.count > 1024 else { return [] }
+        return [Finding(
+            ruleID: ruleID,
+            severity: defaultSeverity,
+            agent: .claude,
+            fileURL: doc.skillFileURL,
+            message: "Claude: description exceeds 1024 characters",
+            line: doc.frontmatterStartLine > 0 ? doc.frontmatterStartLine + 2 : nil,
+            column: nil
+        )]
+    }
+}
+
+struct ClaudeLengthWarningRule: ValidationRule {
+    let ruleID = "claude.length.warning"
+    let description = "Claude SKILL.md files over 500 lines may be truncated"
+    let appliesToAgent: AgentKind? = .claude
+    let defaultSeverity: Severity = .warning
+    
+    func validate(doc: SkillDoc, policy: SkillsConfig.Policy?) -> [Finding] {
+        guard doc.lineCount > 500 else { return [] }
+        return [Finding(
+            ruleID: ruleID,
+            severity: defaultSeverity,
+            agent: .claude,
+            fileURL: doc.skillFileURL,
+            message: "Claude: SKILL.md is \(doc.lineCount) lines (> 500), which may be truncated in some contexts"
+        )]
+    }
+}
+
 // MARK: - Validator
 
 public enum SkillValidator {
+    private static let registry = ValidationRuleRegistry()
+    
     public static func validate(doc: SkillDoc, policy: SkillsConfig.Policy? = nil) -> [Finding] {
+        return registry.validate(doc: doc, policy: policy)
+    }
+}
+
+// Legacy implementation preserved for reference (can be removed after migration)
+extension SkillValidator {
+    public static func validateLegacy(doc: SkillDoc, policy: SkillsConfig.Policy? = nil) -> [Finding] {
         var findings: [Finding] = []
 
         let name = (doc.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

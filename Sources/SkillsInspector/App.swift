@@ -12,8 +12,9 @@ struct sToolsApp: App {
     var body: some Scene {
         WindowGroup("sTools") {
             ContentView()
-                .frame(minWidth: 960, minHeight: 640)
+                .frame(minWidth: 1024, minHeight: 700)
         }
+        .defaultSize(width: 1280, height: 800)
         .commands {
             CommandGroup(replacing: .newItem) {
                 // No new document in this app
@@ -52,6 +53,15 @@ struct sToolsApp: App {
                     NotificationCenter.default.post(name: .clearCache, object: nil)
                 }
             }
+            
+            CommandGroup(replacing: .help) {
+                Button("Keyboard Shortcuts") {
+                    if let url = URL(string: "sinspect://shortcuts") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .keyboardShortcut("?", modifiers: .command)
+            }
         }
         
         Window("Settings", id: "settings") {
@@ -60,6 +70,14 @@ struct sToolsApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+        
+        Window("Keyboard Shortcuts", id: "shortcuts") {
+            KeyboardShortcutsView()
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+        .keyboardShortcut("?", modifiers: .command)
     }
 }
 
