@@ -208,11 +208,11 @@ vale document.md
 # Markdown formatting
 markdownlint-cli2 document.md
 
-# Readability scoring
-python scripts/check_readability.py document.md
+# Readability scoring (if available)
+# Target: 45-70 Flesch Reading Ease score
 
-# Brand compliance
-python scripts/check_brand_guidelines.py --docs document.md
+# Brand compliance (manual verification)
+# Check for documentation signature and brand assets
 ```
 
 ## Brand Compliance (brAInwav)

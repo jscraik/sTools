@@ -23,12 +23,6 @@ final class IndexViewModel: ObservableObject {
             selectedPath = stored
         }
     }
-
-    private var changelogURL: URL {
-        let docs = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("docs", isDirectory: true)
-        return docs.appendingPathComponent("skills-changelog.md")
-    }
     
     func generate(
         codexRoots: [URL],
@@ -42,20 +36,14 @@ final class IndexViewModel: ObservableObject {
         isGenerating = true
         currentTask?.cancel()
         
-        let claude = claudeRoot
-        let includeFilter = include
-        let bumpType = bump
-        let changelog = changelogNote
-        let existingVer = existingVersion.isEmpty ? nil : existingVersion
-        
         currentTask = Task(priority: .userInitiated) {
             if Task.isCancelled { return ([SkillIndexEntry](), "", "") }
             let entries = SkillIndexer.generate(
                 codexRoots: codexRoots,
-                claudeRoot: claude,
+                claudeRoot: claudeRoot,
                 codexSkillManagerRoot: codexSkillManagerRoot,
                 copilotRoot: copilotRoot,
-                include: includeFilter,
+                include: include,
                 recursive: recursive,
                 maxDepth: nil,
                 excludes: excludes,
@@ -64,9 +52,9 @@ final class IndexViewModel: ObservableObject {
             
             let (version, markdown) = SkillIndexer.renderMarkdown(
                 entries: entries,
-                existingVersion: existingVer,
-                bump: bumpType,
-                changelogNote: changelog.isEmpty ? nil : changelog
+                existingVersion: existingVersion.isEmpty ? nil : existingVersion,
+                bump: bump,
+                changelogNote: changelogNote.isEmpty ? nil : changelogNote
             )
             
             return (entries, version, markdown)
@@ -184,10 +172,20 @@ struct IndexView: View {
             toolbar
             content
         }
-        .frame(minWidth: 900)
+        .frame(minWidth: 600)
         .task(id: viewModel.include) { await autoGenerateIfReady() }
         .task(id: viewModel.bump) { await autoGenerateIfReady() }
         .task(id: recursive) { await autoGenerateIfReady() }
+        .task(id: viewModel.existingVersion) {
+            // Debounce version typing to avoid flicker
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            await autoGenerateIfReady()
+        }
+        .task(id: viewModel.changelogNote) {
+            // Debounce changelog typing
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            await autoGenerateIfReady()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .runScan)) { _ in
             Task { await viewModel.generate(codexRoots: codexRoots, claudeRoot: claudeRoot, codexSkillManagerRoot: codexSkillManagerRoot, copilotRoot: copilotRoot, recursive: recursive, excludes: excludes, excludeGlobs: excludeGlobs) }
         }
@@ -195,123 +193,131 @@ struct IndexView: View {
             viewModel.cancel()
         }
     }
-    
+}
+
+// MARK: - Subviews
+private extension IndexView {
+    @ViewBuilder
     private var toolbar: some View {
         VStack(spacing: 0) {
-            // Main toolbar
-            HStack(spacing: DesignTokens.Spacing.xs) {
-                // Primary action
-                Button {
-                    Task { await viewModel.generate(codexRoots: codexRoots, claudeRoot: claudeRoot, codexSkillManagerRoot: codexSkillManagerRoot, copilotRoot: copilotRoot, recursive: recursive, excludes: excludes, excludeGlobs: excludeGlobs) }
-                } label: {
-                    HStack(spacing: DesignTokens.Spacing.xxxs) {
-                        if viewModel.isGenerating {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "doc.badge.gearshape")
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                // Primary Action Group
+                HStack(spacing: DesignTokens.Spacing.xxxs) {
+                    Button {
+                        Task { await viewModel.generate(codexRoots: codexRoots, claudeRoot: claudeRoot, codexSkillManagerRoot: codexSkillManagerRoot, copilotRoot: copilotRoot, recursive: recursive, excludes: excludes, excludeGlobs: excludeGlobs) }
+                    } label: {
+                        HStack(spacing: DesignTokens.Spacing.xxxs) {
+                            if viewModel.isGenerating {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "doc.badge.gearshape.fill")
+                            }
+                            Text(viewModel.isGenerating ? "Indexing…" : "Generate")
+                                .fontWeight(.semibold)
                         }
-                        Text(viewModel.isGenerating ? "Generating…" : "Generate")
                     }
+                    .disabled(viewModel.isGenerating)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .help("Generate or refresh the skills index (⌘R)")
                 }
-                .disabled(viewModel.isGenerating)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                
+
                 Divider()
-                    .frame(height: 24)
-                
-                // Include filter
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair) {
-                    Text("Include")
-                        .font(.system(.caption2, weight: .medium))
-                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                        .textCase(.uppercase)
-                    Picker("Include", selection: $viewModel.include) {
-                        Text("All").tag(IndexInclude.all)
-                        Text("Codex").tag(IndexInclude.codex)
-                        Text("Claude").tag(IndexInclude.claude)
-                        Text("CSM").tag(IndexInclude.codexSkillManager)
-                        Text("Copilot").tag(IndexInclude.copilot)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 320)
-                }
-                
-                Divider()
-                    .frame(height: 24)
-                
-                // Version bump
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair) {
-                    Text("Version Bump")
-                        .font(.system(.caption2, weight: .medium))
-                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                        .textCase(.uppercase)
-                    Picker("Bump", selection: $viewModel.bump) {
-                        Text("None").tag(IndexBump.none)
-                        Text("Patch").tag(IndexBump.patch)
-                        Text("Minor").tag(IndexBump.minor)
-                        Text("Major").tag(IndexBump.major)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 200)
-                }
-                
-                // Recursive toggle
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair) {
-                    Text("Options")
-                        .font(.system(.caption2, weight: .medium))
-                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                        .textCase(.uppercase)
-                    HStack(spacing: DesignTokens.Spacing.xxxs) {
-                        Label("Recursive", systemImage: "arrow.down.right.and.arrow.up.left")
-                            .labelStyle(.iconOnly)
-                            .foregroundStyle(recursive ? DesignTokens.Colors.Accent.green : DesignTokens.Colors.Icon.secondary)
-                        Toggle("", isOn: $recursive)
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
-                    }
-                }
-                
-                Spacer()
-                
-                // Status indicators
+                    .frame(height: 28)
+
+                // Filtering Configuration
                 HStack(spacing: DesignTokens.Spacing.xs) {
-                    if !viewModel.generatedVersion.isEmpty {
-                        HStack(spacing: DesignTokens.Spacing.hair) {
-                            Image(systemName: "tag")
-                                .font(.caption2)
-                            Text("v\(viewModel.generatedVersion)")
-                                .font(.system(.caption, design: .monospaced))
-                                .fontWeight(.medium)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Source Scope")
+                            .font(.system(.caption2, weight: .bold))
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            .textCase(.uppercase)
+                        
+                        Picker("", selection: $viewModel.include) {
+                            Label("All", systemImage: "square.grid.2x2").tag(IndexInclude.all)
+                            Label("Codex", systemImage: "cpu").tag(IndexInclude.codex)
+                            Label("Claude", systemImage: "brain").tag(IndexInclude.claude)
+                            Label("CSM", systemImage: "briefcase").tag(IndexInclude.codexSkillManager)
+                            Label("Copilot", systemImage: "terminal").tag(IndexInclude.copilot)
                         }
-                        .foregroundStyle(DesignTokens.Colors.Accent.blue)
-                        .padding(.horizontal, DesignTokens.Spacing.xxxs)
-                        .padding(.vertical, DesignTokens.Spacing.hair)
-                        .background(DesignTokens.Colors.Accent.blue.opacity(0.1))
-                        .cornerRadius(DesignTokens.Radius.sm)
+                        .pickerStyle(.segmented)
+                        .scaleEffect(0.9)
+                        .frame(width: 300)
                     }
                     
-                    HStack(spacing: DesignTokens.Spacing.hair) {
-                        Image(systemName: "doc.text")
-                            .font(.caption2)
-                        Text("\(viewModel.entries.count) skills")
-                            .font(.system(.caption, design: .monospaced))
+                    Button {
+                        recursive.toggle()
+                    } label: {
+                        Image(systemName: recursive ? "arrow.down.right.and.arrow.up.left.circle.fill" : "arrow.down.right.and.arrow.up.left.circle")
+                            .font(.title3)
+                            .foregroundStyle(recursive ? DesignTokens.Colors.Accent.green : DesignTokens.Colors.Icon.tertiary)
                     }
-                    .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                    .padding(.horizontal, DesignTokens.Spacing.xxxs)
-                    .padding(.vertical, DesignTokens.Spacing.hair)
-                    .background(DesignTokens.Colors.Background.secondary.opacity(0.6))
-                    .cornerRadius(DesignTokens.Radius.sm)
+                    .buttonStyle(.plain)
+                    .help("Recursive search: \(recursive ? "On" : "Off")")
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Version Bump")
+                            .font(.system(.caption2, weight: .bold))
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            .textCase(.uppercase)
+                        
+                        Picker("", selection: $viewModel.bump) {
+                            Text("No Bump").tag(IndexBump.none)
+                            Text("Patch").tag(IndexBump.patch)
+                            Text("Minor").tag(IndexBump.minor)
+                            Text("Major").tag(IndexBump.major)
+                        }
+                        .pickerStyle(.segmented)
+                        .scaleEffect(0.9)
+                        .frame(width: 240)
+                    }
                 }
-            }
-            .padding(.horizontal, DesignTokens.Spacing.xs)
-            .padding(.vertical, DesignTokens.Spacing.xxs)
-            .background(glassBarStyle(cornerRadius: 0))
+
+                Spacer()
+
+                // Final Status & Meta
+                HStack(spacing: DesignTokens.Spacing.xs) {
+                    if !viewModel.generatedVersion.isEmpty {
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text("TARGET VERSION")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            Text("v\(viewModel.generatedVersion)")
+                                .font(.system(.subheadline, design: .monospaced))
+                                .fontWeight(.bold)
+                                .foregroundStyle(DesignTokens.Colors.Accent.blue)
+                        }
+                        .padding(.horizontal, DesignTokens.Spacing.xxs)
+                        .padding(.vertical, 4)
+                        .background(DesignTokens.Colors.Accent.blue.opacity(0.1))
+                        .cornerRadius(DesignTokens.Radius.sm)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                                .stroke(DesignTokens.Colors.Accent.blue.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text("COUNT")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                        Text("\(viewModel.entries.count)")
+                            .font(.system(.subheadline, design: .monospaced))
+                            .fontWeight(.bold)
+                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                    }
+                }
+            
+            Divider()
         }
+        .padding(.horizontal, DesignTokens.Spacing.sm)
+        .padding(.vertical, DesignTokens.Spacing.xs)
+        .background(glassBarStyle(cornerRadius: 0))
     }
     
+    @ViewBuilder
     private var content: some View {
         HStack(spacing: 0) {
             // Skills list (fixed width)
@@ -346,7 +352,7 @@ struct IndexView: View {
             markdownPreview
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 700)
+        .frame(minWidth: 500)
     }
     
     private var skillsList: some View {
@@ -354,31 +360,46 @@ struct IndexView: View {
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
                 // Settings section
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-                    Text("Settings")
-                        .heading3()
-                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                    HStack {
+                        Image(systemName: "slider.horizontal.3")
+                            .foregroundStyle(DesignTokens.Colors.Accent.blue)
+                        Text("Index Header Configuration")
+                            .heading3()
+                        Spacer()
+                    }
+                    .padding(.bottom, DesignTokens.Spacing.hair)
                     
-                    VStack(spacing: DesignTokens.Spacing.xxs) {
-                        HStack {
-                            Text("Existing Version:")
-                                .bodySmall()
-                                .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                            TextField("0.1.0", text: $viewModel.existingVersion)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair + DesignTokens.Spacing.micro) {
-                            Text("Changelog Note:")
-                                .bodySmall()
-                                .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                            TextField("Added new skills", text: $viewModel.changelogNote)
-                                .textFieldStyle(.roundedBorder)
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+                        HStack(alignment: .top, spacing: DesignTokens.Spacing.sm) {
+                            VStack(alignment: .leading, spacing: DesignTokens.Spacing.micro) {
+                                Text("EXISTING VERSION")
+                                    .font(.system(size: 9, weight: .black))
+                                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                                TextField("0.1.0", text: $viewModel.existingVersion)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 80)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+                            
+                            VStack(alignment: .leading, spacing: DesignTokens.Spacing.micro) {
+                                Text("CHANGELOG NOTE")
+                                    .font(.system(size: 9, weight: .black))
+                                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                                TextField("Describe changes...", text: $viewModel.changelogNote)
+                                    .textFieldStyle(.roundedBorder)
+                                    .bodySmall()
+                            }
                         }
                     }
                     .padding(DesignTokens.Spacing.xs)
-                    .cardStyle()
+                    .background(DesignTokens.Colors.Background.tertiary.opacity(0.4))
+                    .cornerRadius(DesignTokens.Radius.md)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                            .stroke(DesignTokens.Colors.Border.light, lineWidth: 1)
+                    )
                 }
+                .padding(.bottom, DesignTokens.Spacing.xs)
                 
                 ForEach(AgentKind.allCases, id: \.self) { agent in
                     let agentEntries = viewModel.entries.filter { $0.agent == agent }
@@ -460,39 +481,17 @@ struct IndexView: View {
                         Label("Save", systemImage: "square.and.arrow.down")
                             .captionText()
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.customGlassProminent)
                     .controlSize(.small)
                 }
                 .padding(.horizontal, DesignTokens.Spacing.xs)
                 .padding(.vertical, DesignTokens.Spacing.xxs)
-                .background(
-                    Group {
-                        if #available(iOS 26, macOS 15, *) {
-                            Color.clear.glassEffect(.regular, in: .rect(cornerRadius: 12))
-                        } else {
-                            Color(.windowBackgroundColor)
-                                .opacity(0.4)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                        }
-                    }
-                )
+                .background(glassBarStyle(cornerRadius: 12))
 
-                Group {
-                    if #available(iOS 26, macOS 15, *) {
-                        MarkdownPreviewView(content: preview)
-                            .id(viewModel.selectedPath ?? "generated-preview")
-                            .glassEffect(
-                                .regular.tint(.primary.opacity(0.08)),
-                                in: .rect(cornerRadius: 14)
-                            )
-                            .padding(DesignTokens.Spacing.xs)
-                    } else {
-                        MarkdownPreviewView(content: preview)
-                            .id(viewModel.selectedPath ?? "generated-preview")
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-                            .padding(DesignTokens.Spacing.xs)
-                    }
-                }
+                MarkdownPreviewView(content: preview)
+                    .id(viewModel.selectedPath ?? "generated-preview")
+                    .background(DesignTokens.Colors.Background.secondary, in: RoundedRectangle(cornerRadius: 14))
+                    .padding(DesignTokens.Spacing.xs)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(.easeInOut(duration: 0.2), value: viewModel.selectedPath)
             }
@@ -513,7 +512,10 @@ struct IndexView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
 
+// MARK: - Actions
+private extension IndexView {
     private func autoGenerateIfReady() async {
         // Avoid re-entrancy while generating; respect user intent when a run is already in flight.
         guard viewModel.isGenerating == false else { return }

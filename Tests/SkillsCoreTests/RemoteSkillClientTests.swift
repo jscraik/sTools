@@ -63,6 +63,19 @@ final class RemoteSkillClientTests: XCTestCase {
         let version = try await client.fetchLatestVersion("demo")
         XCTAssertEqual(version, "2.0.0")
     }
+
+    func testFetchManifestReturnsNilOn404() async throws {
+        MockURLProtocol.requestHandler = { request in
+            guard request.url?.path == "/api/v1/skills/demo/manifest" else { throw URLError(.badURL) }
+            return (MockURLProtocol.makeResponse(for: request, statusCode: 404), Data())
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+        let client = RemoteSkillClient.live(baseURL: URL(string: "https://mock.local")!, session: session)
+        let manifest = try await client.fetchManifest("demo", nil)
+        XCTAssertNil(manifest)
+    }
 }
 
 // MARK: - Mock URLProtocol

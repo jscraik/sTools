@@ -7,7 +7,7 @@ cd "$ROOT"
 
 APP_NAME=${APP_NAME:-sTools}
 BUNDLE_ID=${BUNDLE_ID:-com.jamiecraik.stools}
-MACOS_MIN_VERSION=${MACOS_MIN_VERSION:-26.0}
+MACOS_MIN_VERSION=${MACOS_MIN_VERSION:-14.0}
 MENU_BAR_APP=${MENU_BAR_APP:-0}
 SIGNING_MODE=${SIGNING_MODE:-}
 APP_IDENTITY=${APP_IDENTITY:-}
@@ -117,8 +117,17 @@ install_binary() {
 install_binary "$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
 
 # Copy icon if exists
-if [[ -f "$ROOT/Icon.icns" ]]; then
-  cp "$ROOT/Icon.icns" "$APP/Contents/Resources/Icon.icns"
+ICON_SRC=""
+if [[ -f "$ROOT/Sources/SkillsInspector/Resources/Icon.icns" ]]; then
+  ICON_SRC="$ROOT/Sources/SkillsInspector/Resources/Icon.icns"
+elif [[ -f "$ROOT/Icon.icns" ]]; then
+  ICON_SRC="$ROOT/Icon.icns"
+fi
+
+if [[ -n "$ICON_SRC" ]]; then
+  cp "$ICON_SRC" "$APP/Contents/Resources/Icon.icns"
+else
+  echo "Warning: Icon.icns not found in repo root or Resources; app will use default icon." >&2
 fi
 
 # Ensure contents are writable before stripping attributes and signing.

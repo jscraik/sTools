@@ -95,7 +95,7 @@ Optimize for beginners without annoying experts:
 - If markdownlint config exists, run `markdownlint-cli2 <doc> --config <config>`
 - If link-check tooling exists, run it and record results
 - If tooling is missing, state what is missing and how to enable it
-- If `scripts/check_readability.py` exists, run it and record the score and target range (default target: 45-70 Flesch Reading Ease)
+- If readability checking is available, run it and record the score and target range (default target: 45-70 Flesch Reading Ease)
 
 ### 10) Finish with Verification Hooks
 
@@ -153,7 +153,7 @@ Add a short acceptance checklist and an evidence bundle at the end of the doc:
 
 ### Correctness and Verification
 
-- [ ] Steps match repo reality (scripts/configs/paths verified)
+- [ ] Steps match repo reality (configs/paths verified)
 - [ ] Includes a "Verify" section with expected results
 - [ ] Troubleshooting covers top failure modes
 - [ ] Unknowns are called out explicitly as items to confirm
@@ -206,8 +206,8 @@ Use these commands in CI or pre-commit, adjusting paths to your repo:
 ```bash
 vale <doc>
 markdownlint-cli2 <doc> --config <config>
-python /path/to/check_brand_guidelines.py --repo . --docs <doc>
-python /path/to/check_readability.py <doc>
+# Manual brand compliance verification
+# Manual readability assessment
 ```
 
 ## Docs Upkeep

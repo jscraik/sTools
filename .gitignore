@@ -1,21 +1,45 @@
 # SwiftPM build artifacts
 .build/
+.build-*/
 .swiftpm/
 DerivedData/
-*.app/
 *.xcodeproj/
 *.xcworkspace/
 
-# Generated files
-Icon.icns
-Icon.png
-Package.resolved
+# Built applications and bundles
+*.app/
+Template.app/
+sTools.app/
 
-# macOS
+# Distribution files
+*.dmg
+*.pkg
+*.zip
+
+# macOS system files
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
 
-# Local agent/IDE metadata
-.claude/
+# Temporary files
+.tmp/
+*.tmp
+*.swp
+*~
+
+# Local development
 .vscode/
 .idea/
-*.dmg
+*.sublime-*
+
+# Cache and logs
+*.log
+.cache/
+
+# Local configuration and cache files
+.skillsctl/cache.json
+
+# Keep Package.resolved for dependency locking
+# Keep Icon.icns and Icon.png as they appear to be project assets

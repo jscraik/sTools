@@ -2,9 +2,9 @@ import SwiftUI
 import SkillsCore
 
 struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedEditor: Editor = EditorIntegration.defaultEditor
     @State private var selectedTab: SettingsTab = .general
-    @Environment(\.dismiss) private var dismiss
     
     enum SettingsTab: String, CaseIterable {
         case general = "General"

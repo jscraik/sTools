@@ -68,99 +68,125 @@ struct SyncView: View {
     var body: some View {
         let rootsValid = PathUtil.existsDir(activeCodexRoot) && PathUtil.existsDir(claudeRoot)
         VStack(spacing: 0) {
-        HStack(spacing: DesignTokens.Spacing.xs) {
-            Button {
-                guard rootsValid else { return }
-                Task {
-                    await viewModel.run(
-                        roots: activeRoots,
-                        recursive: recursive,
-                        maxDepth: maxDepth,
-                        excludes: parsedExcludes,
-                        excludeGlobs: parsedGlobExcludes
-                    )
-                }
-            } label: {
-                    Label(viewModel.isRunning ? "Syncing…" : "Sync", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .disabled(viewModel.isRunning || !rootsValid)
-                .buttonStyle(.borderedProminent)
-
-                if !rootsValid {
-                    Label("Set roots in sidebar", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(DesignTokens.Colors.Status.warning)
-                        .captionText()
-                }
-
-                Toggle(isOn: $recursive) {
-                    Text("Recursive")
-                        .fixedSize()
-                }
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(!rootsValid || viewModel.isRunning)
-
-                Spacer()
-                
+            // Main Sync Toolbar
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                // Primary Action Group
                 HStack(spacing: DesignTokens.Spacing.xxxs) {
-                    Text("Depth:")
-                        .captionText()
-                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                    TextField("", value: $maxDepth, format: .number)
-                        .frame(width: 50)
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(!rootsValid || viewModel.isRunning)
+                    Button {
+                        guard rootsValid else { return }
+                        Task {
+                            await viewModel.run(
+                                roots: activeRoots,
+                                recursive: recursive,
+                                maxDepth: maxDepth,
+                                excludes: parsedExcludes,
+                                excludeGlobs: parsedGlobExcludes
+                            )
+                        }
+                    } label: {
+                        HStack(spacing: DesignTokens.Spacing.xxxs) {
+                            if viewModel.isRunning {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                            }
+                            Text(viewModel.isRunning ? "Syncing…" : "Sync Now")
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .disabled(viewModel.isRunning || !rootsValid)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .help("Compare content across all active skill roots")
                 }
-            }
-            .padding(.horizontal, DesignTokens.Spacing.xxs)
-            .padding(.vertical, DesignTokens.Spacing.xxxs)
-            .background(glassBarStyle())
-            
-            HStack(spacing: DesignTokens.Spacing.xs) {
-                HStack(spacing: DesignTokens.Spacing.hair) {
-                    Text("Excludes:")
-                        .captionText()
-                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                    TextField("dir1, dir2", text: $excludeInput)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 200)
-                        .disabled(viewModel.isRunning)
-                }
-                
-                HStack(spacing: DesignTokens.Spacing.hair) {
-                    Text("Globs:")
-                        .captionText()
-                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                    TextField("*.tmp, test_*", text: $excludeGlobInput)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 200)
-                        .disabled(viewModel.isRunning)
+
+                Divider()
+                    .frame(height: 28)
+
+                // Configuration Group
+                HStack(spacing: DesignTokens.Spacing.xs) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Search Mode")
+                            .font(.system(.caption2, weight: .bold))
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            .textCase(.uppercase)
+                        
+                        HStack(spacing: DesignTokens.Spacing.xxxs) {
+                            Button {
+                                recursive.toggle()
+                            } label: {
+                                Label("Recursive", systemImage: recursive ? "arrow.down.right.and.arrow.up.left.circle.fill" : "arrow.down.right.and.arrow.up.left.circle")
+                                    .foregroundStyle(recursive ? DesignTokens.Colors.Accent.green : DesignTokens.Colors.Icon.tertiary)
+                                    .font(.title3)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Recursive search: \(recursive ? "On" : "Off")")
+                            
+                            HStack(spacing: DesignTokens.Spacing.hair) {
+                                Text("Depth:")
+                                    .captionText()
+                                    .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                                TextField("", value: $maxDepth, format: .number)
+                                    .frame(width: 44)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Exclusions")
+                            .font(.system(.caption2, weight: .bold))
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            .textCase(.uppercase)
+                        
+                        HStack(spacing: DesignTokens.Spacing.xs) {
+                            TextField("Folders (dir1, dir2)", text: $excludeInput)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 140)
+                                .controlSize(.small)
+                            
+                            TextField("Globs (*.tmp)", text: $excludeGlobInput)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 120)
+                                .controlSize(.small)
+                        }
+                    }
                 }
 
                 Spacer()
-            }
-            .padding(.horizontal, DesignTokens.Spacing.xxs)
-            .padding(.vertical, DesignTokens.Spacing.hair + DesignTokens.Spacing.micro)
-            .background(glassBarStyle())
-            .font(.system(size: DesignTokens.Typography.BodySmall.size, weight: .regular))
-            .onReceive(NotificationCenter.default.publisher(for: .runScan)) { _ in
-                guard rootsValid else { return }
-                Task {
-                    viewModel.cancel()
-                    await viewModel.run(
-                        roots: activeRoots,
-                        recursive: recursive,
-                        maxDepth: maxDepth,
-                        excludes: parsedExcludes,
-                        excludeGlobs: parsedGlobExcludes
-                    )
+                
+                if !rootsValid {
+                    HStack(spacing: DesignTokens.Spacing.xxxs) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("Check scan roots")
+                    }
+                    .foregroundStyle(DesignTokens.Colors.Status.warning)
+                    .captionText()
+                    .padding(.horizontal, DesignTokens.Spacing.xxxs)
+                    .padding(.vertical, 4)
+                    .background(DesignTokens.Colors.Status.warning.opacity(0.1))
+                    .cornerRadius(DesignTokens.Radius.sm)
                 }
+            }
+            .padding(.horizontal, DesignTokens.Spacing.sm)
+            .padding(.vertical, DesignTokens.Spacing.xs)
+            .background(glassBarStyle(cornerRadius: 0))
+            
+            Divider()
+
+            // Auto-Sync logic (Debounced)
+            .task(id: recursive) { try? await Task.sleep(nanoseconds: 500_000_000); await autoSyncIfReady() }
+            .task(id: maxDepth) { try? await Task.sleep(nanoseconds: 800_000_000); await autoSyncIfReady() }
+            .task(id: excludeInput) { try? await Task.sleep(nanoseconds: 1_200_000_000); await autoSyncIfReady() }
+            .task(id: excludeGlobInput) { try? await Task.sleep(nanoseconds: 1_200_000_000); await autoSyncIfReady() }
+            .onReceive(NotificationCenter.default.publisher(for: .runScan)) { _ in
+                Task { await autoSyncIfReady() }
             }
             .onReceive(NotificationCenter.default.publisher(for: .cancelScan)) { _ in
-                Task {
-                    viewModel.cancel()
-                    _ = await viewModel.waitForCurrentTask()
-                }
+                viewModel.cancel()
             }
 
             HStack(spacing: 0) {
@@ -215,33 +241,60 @@ struct SyncView: View {
             }
         }
     }
-    
+}
+
+// MARK: - Subviews
+private extension SyncView {
     private var syncResultsList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-                HStack(spacing: DesignTokens.Spacing.xxxs) {
-                    Button("Expand All") {
-                        expandedMissing = Set(AgentKind.allCases)
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+                // Header with actions
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+                    HStack {
+                        Image(systemName: "list.bullet.indent")
+                            .foregroundStyle(DesignTokens.Colors.Accent.blue)
+                        Text("Comparison Results")
+                            .heading3()
+                        Spacer()
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    
+                    HStack(spacing: DesignTokens.Spacing.xxxs) {
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                expandedMissing = Set(AgentKind.allCases)
+                            }
+                        } label: {
+                            Label("Expand All", systemImage: "plus.square")
+                                .captionText()
+                        }
+                        .buttonStyle(.customGlass)
+                        .controlSize(.small)
 
-                    Button("Collapse All") {
-                        expandedMissing.removeAll()
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                expandedMissing.removeAll()
+                            }
+                        } label: {
+                            Label("Collapse", systemImage: "minus.square")
+                                .captionText()
+                        }
+                        .buttonStyle(.customGlass)
+                        .controlSize(.small)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-
-                    Spacer()
                 }
                 .padding(.horizontal, DesignTokens.Spacing.hair)
+                .padding(.top, DesignTokens.Spacing.hair)
 
+                Divider()
+                    .padding(.horizontal, DesignTokens.Spacing.hair)
+
+                // Missing Skills Sections
                 ForEach(AgentKind.allCases, id: \.self) { agent in
                     let names = viewModel.report.missingByAgent[agent] ?? []
                     if !names.isEmpty {
-                        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxxs) {
+                        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
                             Button {
-                                withAnimation(.easeInOut(duration: 0.15)) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                     if expandedMissing.contains(agent) {
                                         expandedMissing.remove(agent)
                                     } else {
@@ -258,12 +311,14 @@ struct SyncView: View {
                                         .bodySmall()
                                         .foregroundStyle(DesignTokens.Colors.Text.secondary)
                                     Spacer(minLength: DesignTokens.Spacing.xs)
-                                    Image(systemName: expandedMissing.contains(agent) ? "chevron.down" : "chevron.right")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(DesignTokens.Colors.Text.primary)
-                                        .accessibilityHidden(true)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                                        .rotationEffect(.degrees(expandedMissing.contains(agent) ? 90 : 0))
                                 }
-                                .contentShape(Rectangle())
+                                .padding(DesignTokens.Spacing.xxxs)
+                                .background(DesignTokens.Colors.Background.tertiary.opacity(0.3))
+                                .cornerRadius(DesignTokens.Radius.sm)
                             }
                             .buttonStyle(.plain)
 
@@ -276,27 +331,35 @@ struct SyncView: View {
                                             tint: agent.color,
                                             selection: .missing(agent: agent, name: name)
                                         )
+                                        .transition(.move(edge: .top).combined(with: .opacity))
                                     }
                                 }
+                                .padding(.leading, DesignTokens.Spacing.hair)
                             }
                         }
-                        .padding(.horizontal, DesignTokens.Spacing.hair)
                     }
                 }
 
+                // Different Content Section
                 if !viewModel.report.differentContent.isEmpty {
-                    sectionHeader(title: "Different content", count: viewModel.report.differentContent.count, icon: "doc.badge.gearshape", tint: DesignTokens.Colors.Accent.orange)
-                    ForEach(viewModel.report.differentContent, id: \.name) { diff in
-                        syncCard(
-                            title: diff.name,
-                            icon: "doc.badge.gearshape",
-                            tint: DesignTokens.Colors.Accent.orange,
-                            selection: .different(name: diff.name)
-                        )
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+                        sectionHeader(title: "Content Differences", count: viewModel.report.differentContent.count, icon: "doc.badge.gearshape", tint: DesignTokens.Colors.Accent.orange)
+                            .padding(.vertical, DesignTokens.Spacing.hair)
+                        
+                        VStack(spacing: DesignTokens.Spacing.xxxs) {
+                            ForEach(viewModel.report.differentContent, id: \.name) { diff in
+                                syncCard(
+                                    title: diff.name,
+                                    icon: "doc.badge.gearshape",
+                                    tint: DesignTokens.Colors.Accent.orange,
+                                    selection: .different(name: diff.name)
+                                )
+                            }
+                        }
                     }
                 }
             }
-            .padding(.vertical, DesignTokens.Spacing.xxxs)
+            .padding(DesignTokens.Spacing.xs)
         }
         .onAppear {
             if viewModel.selection == nil {
@@ -319,6 +382,41 @@ struct SyncView: View {
         }
     }
 
+    private var emptyDetailState: some View {
+        VStack(spacing: DesignTokens.Spacing.xxs) {
+            Image(systemName: "sidebar.right")
+                .font(.system(size: 40))
+                .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+            Text("Select a skill to view details")
+                .heading3()
+                .foregroundStyle(DesignTokens.Colors.Text.secondary)
+            Text("Click a skill from the list to compare content")
+                .captionText()
+                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Actions
+private extension SyncView {
+    private func autoSyncIfReady() async {
+        guard !viewModel.isRunning else { return }
+        let rootsValid = PathUtil.existsDir(activeCodexRoot) && PathUtil.existsDir(claudeRoot)
+        guard rootsValid else { return }
+        
+        await viewModel.run(
+            roots: activeRoots,
+            recursive: recursive,
+            maxDepth: maxDepth,
+            excludes: parsedExcludes,
+            excludeGlobs: parsedGlobExcludes
+        )
+    }
+}
+
+// MARK: - Helpers
+private extension SyncView {
     @ViewBuilder
     private func sectionHeader(title: String, count: Int, icon: String, tint: Color) -> some View {
         HStack(spacing: DesignTokens.Spacing.xxxs) {
@@ -358,24 +456,9 @@ struct SyncView: View {
             }
         }
         .buttonStyle(.plain)
-        .cardStyle(selected: viewModel.selection == selection, tint: tint)
+        .cardStyle(selected: viewModel.selection == selection, tint: .accentColor) // Use default/neutral accent unless selected
     }
     
-    private var emptyDetailState: some View {
-        VStack(spacing: DesignTokens.Spacing.xxs) {
-            Image(systemName: "sidebar.right")
-                .font(.system(size: 40))
-                .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
-            Text("Select a skill to view details")
-                .heading3()
-                .foregroundStyle(DesignTokens.Colors.Text.secondary)
-            Text("Click a skill from the list to compare content")
-                .captionText()
-                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     private var parsedExcludes: [String] {
         excludeInput.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }

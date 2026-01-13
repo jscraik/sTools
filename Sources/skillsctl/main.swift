@@ -6,7 +6,7 @@ struct SkillsCtl: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "skillsctl",
         abstract: "Scan/validate/sync Codex + Claude SKILL.md directories.",
-        subcommands: [Scan.self, Fix.self, SyncCheck.self, Index.self, Remote.self, Completion.self]
+        subcommands: [Scan.self, Fix.self, SyncCheck.self, Index.self, Remote.self, Publish.self, Completion.self]
     )
 }
 
@@ -15,7 +15,15 @@ struct SkillsCtl: ParsableCommand {
 struct Remote: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Browse and install remote skills from Clawdhub.",
-        subcommands: [RemoteList.self, RemoteSearch.self, RemoteDetail.self, RemoteInstall.self, RemoteUpdate.self]
+        subcommands: [
+            RemoteList.self,
+            RemoteSearch.self,
+            RemoteDetail.self,
+            RemotePreview.self,
+            RemoteVerify.self,
+            RemoteInstall.self,
+            RemoteUpdate.self
+        ]
     )
 }
 
@@ -29,9 +37,15 @@ struct RemoteList: ParsableCommand {
     var format: String = "text"
 
     func run() async throws {
-        let client = RemoteSkillClient.live()
-        let items = try await client.fetchLatest(limit)
-        try output(items: items, format: format)
+        let normalized = format.lowercased()
+        do {
+            let client = RemoteSkillClient.live()
+            let items = try await client.fetchLatest(limit)
+            try output(items: items, format: normalized)
+        } catch {
+            emitRemoteError(error, format: normalized)
+            throw ExitCode(1)
+        }
     }
 }
 
@@ -45,35 +59,178 @@ struct RemoteSearch: ParsableCommand {
     var format: String = "text"
 
     func run() async throws {
-        let client = RemoteSkillClient.live()
-        let items = try await client.search(query, limit)
-        try output(items: items, format: format)
+        let normalized = format.lowercased()
+        do {
+            let client = RemoteSkillClient.live()
+            let items = try await client.search(query, limit)
+            try output(items: items, format: normalized)
+        } catch {
+            emitRemoteError(error, format: normalized)
+            throw ExitCode(1)
+        }
     }
 }
 
 struct RemoteDetail: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Fetch owner detail for a slug.")
     @Argument(help: "Skill slug") var slug: String
+    @Option(name: .customLong("format"), help: "Output format: text|json")
+    var format: String = "json"
 
     func run() async throws {
-        let client = RemoteSkillClient.live()
-        async let owner = client.fetchDetail(slug)
-        async let latest = client.fetchLatestVersion(slug)
-        let detail = RemoteSkillDetail(
-            skill: RemoteSkill(id: slug, slug: slug, displayName: slug, summary: nil, latestVersion: try await latest, updatedAt: nil, downloads: nil, stars: nil),
-            owner: try await owner,
-            changelog: nil
-        )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(detail)
-        if let text = String(data: data, encoding: .utf8) {
-            if let schema = schemaURL(named: "remote-detail-schema.json"),
-               let schemaText = try? String(contentsOf: schema, encoding: .utf8),
-               !JSONValidator.validate(json: text, schema: schemaText) {
-                fputs("WARNING: JSON output did not validate against remote-detail schema\n", stderr)
+        let normalized = format.lowercased()
+        do {
+            let client = RemoteSkillClient.live()
+            async let owner = client.fetchDetail(slug)
+            async let latest = client.fetchLatestVersion(slug)
+            let detail = RemoteSkillDetail(
+                skill: RemoteSkill(id: slug, slug: slug, displayName: slug, summary: nil, latestVersion: try await latest, updatedAt: nil, downloads: nil, stars: nil),
+                owner: try await owner,
+                changelog: nil
+            )
+            switch normalized {
+            case "json":
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(detail)
+                if let text = String(data: data, encoding: .utf8) {
+                    if let schema = schemaURL(named: "remote-detail-schema.json"),
+                       let schemaText = try? String(contentsOf: schema, encoding: .utf8),
+                       !JSONValidator.validate(json: text, schema: schemaText) {
+                        fputs("WARNING: JSON output did not validate against remote-detail schema\n", stderr)
+                    }
+                    print(text)
+                }
+            default:
+                print("\(detail.skill.displayName) (\(detail.skill.slug))")
+                if let owner = detail.owner {
+                    let name = owner.displayName ?? owner.handle ?? "Unknown"
+                    print("Owner: \(name)")
+                }
             }
-            print(text)
+        } catch {
+            emitRemoteError(error, format: normalized)
+            throw ExitCode(1)
+        }
+    }
+}
+
+struct RemotePreview: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Preview a remote skill and its manifest.")
+
+    @Argument(help: "Skill slug") var slug: String
+    @Option(name: .customLong("version"), help: "Specific version; defaults to latest") var version: String?
+    @Option(name: .customLong("format"), help: "Output format: text|json") var format: String = "json"
+
+    func run() async throws {
+        let normalized = format.lowercased()
+        do {
+            let client = RemoteSkillClient.live()
+            let manifest = try await client.fetchManifest(slug, version)
+            let preview = try await client.fetchPreview(slug, version)
+            let output = RemotePreviewOutput(
+                slug: slug,
+                version: preview?.version ?? version,
+                manifest: manifest,
+                preview: preview
+            )
+            switch normalized {
+            case "json":
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                encoder.dateEncodingStrategy = .iso8601
+                let data = try encoder.encode(output)
+                if let text = String(data: data, encoding: .utf8) {
+                    if let schema = schemaURL(named: "remote-preview-schema.json"),
+                       let schemaText = try? String(contentsOf: schema, encoding: .utf8),
+                       !JSONValidator.validate(json: text, schema: schemaText) {
+                        fputs("WARNING: JSON output did not validate against remote-preview schema\n", stderr)
+                    }
+                    print(text)
+                }
+            default:
+                print("Preview: \(slug)")
+                if let manifest {
+                    print("Manifest SHA256: \(manifest.sha256)")
+                } else {
+                    print("Manifest: unavailable")
+                }
+                if let preview = preview?.skillMarkdown {
+                    let lines = preview.split(separator: "\n").prefix(12)
+                    print(lines.joined(separator: "\n"))
+                } else {
+                    print("Preview content unavailable")
+                }
+            }
+        } catch {
+            emitRemoteError(error, format: normalized)
+            throw ExitCode(1)
+        }
+    }
+}
+
+struct RemoteVerify: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Verify a remote skill archive against its manifest.")
+
+    @Argument(help: "Skill slug") var slug: String
+    @Option(name: .customLong("version"), help: "Specific version; defaults to latest") var version: String?
+    @Option(name: .customLong("format"), help: "Output format: text|json") var format: String = "json"
+    @Option(name: .customLong("mode"), help: "Verification mode: strict|permissive") var mode: String = "strict"
+    @Option(name: .customLong("trust-store"), help: "Path to trust store JSON (default: app support trust.json)") var trustStorePath: String?
+
+    func run() async throws {
+        let normalized = format.lowercased()
+        do {
+            let policy = RemoteVerificationPolicy(mode: parseVerificationMode(mode))
+            let client = RemoteSkillClient.live()
+            guard let manifest = try await client.fetchManifest(slug, version) else {
+                throw CLIError(code: "manifest_missing", message: "Manifest unavailable for \(slug).")
+            }
+            let archiveURL = try await client.download(slug, version)
+            let trustStore = loadTrustStore(path: trustStorePath)
+            let installer = RemoteSkillInstaller()
+            let outcome = try installer.verify(
+                archiveURL: archiveURL,
+                manifest: manifest,
+                policy: policy,
+                trustStore: trustStore,
+                skillSlug: slug
+            )
+            let output = RemoteVerifyOutput(
+                slug: slug,
+                version: version,
+                outcome: outcome,
+                archiveSHA256: try? RemoteSkillInstaller.sha256Hex(of: archiveURL)
+            )
+            switch normalized {
+            case "json":
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(output)
+                if let text = String(data: data, encoding: .utf8) {
+                    if let schema = schemaURL(named: "remote-verify-schema.json"),
+                       let schemaText = try? String(contentsOf: schema, encoding: .utf8),
+                       !JSONValidator.validate(json: text, schema: schemaText) {
+                        fputs("WARNING: JSON output did not validate against remote-verify schema\n", stderr)
+                    }
+                    print(text)
+                }
+            default:
+                print("Verification: \(slug)")
+                print("Mode: \(outcome.mode.description)")
+                print("Checksum: \(outcome.checksumValidated ? "ok" : "failed")")
+                print("Signature: \(outcome.signatureValidated ? "ok" : "failed")")
+                print("Trusted signer: \(outcome.trustedSigner ? "yes" : "no")")
+                if !outcome.issues.isEmpty {
+                    print("Issues:")
+                    for issue in outcome.issues {
+                        print("- \(issue)")
+                    }
+                }
+            }
+        } catch {
+            emitRemoteError(error, format: normalized)
+            throw ExitCode(1)
         }
     }
 }
@@ -84,38 +241,59 @@ struct RemoteInstall: ParsableCommand {
     @Option(name: .customLong("version"), help: "Specific version; defaults to latest") var version: String?
     @Option(name: .customLong("target"), help: "codex|claude|<path>; default codex") var target: String = "codex"
     @Flag(name: .customLong("overwrite"), help: "Overwrite existing skill directory if present") var overwrite: Bool = false
+    @Option(name: .customLong("format"), help: "Output format: text|json") var format: String = "json"
+    @Option(name: .customLong("mode"), help: "Verification mode: strict|permissive") var mode: String = "strict"
+    @Option(name: .customLong("trust-store"), help: "Path to trust store JSON (default: app support trust.json)") var trustStorePath: String?
     @Flag(name: .customLong("plain"), help: "Plain output") var plain: Bool = false
 
     func run() async throws {
-        let client = RemoteSkillClient.live()
-        let installer = RemoteSkillInstaller()
-        let downloadURL = try await client.download(slug, version)
-        let targetRoot = resolveTargetRoot(target)
-        let result = try await installer.install(
-            archiveURL: downloadURL,
-            target: targetRoot,
-            overwrite: overwrite
-        )
-        if plain {
-            print("Installed to \(result.skillDirectory.path)")
-        } else {
-            let payload: [String: Any] = [
-                "destination": result.skillDirectory.path,
-                "filesCopied": result.filesCopied,
-                "bytes": result.totalBytes,
-                "archiveSHA256": result.archiveSHA256 ?? ""
-            ]
-            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
-               let text = String(data: data, encoding: .utf8) {
-                if let schema = schemaURL(named: "remote-install-schema.json"),
-                   let schemaText = try? String(contentsOf: schema, encoding: .utf8),
-                   !JSONValidator.validate(json: text, schema: schemaText) {
-                    fputs("WARNING: JSON output did not validate against remote-install schema\n", stderr)
-                }
-                print(text)
-            } else {
-                print("✅ Installed \(slug) to \(result.skillDirectory.path)")
+        let normalized = plain ? "text" : format.lowercased()
+        do {
+            let client = RemoteSkillClient.live()
+            let installer = RemoteSkillInstaller()
+            let downloadURL = try await client.download(slug, version)
+            guard let manifest = try await client.fetchManifest(slug, version) else {
+                throw CLIError(code: "manifest_missing", message: "Manifest unavailable for \(slug).")
             }
+            let targetRoot = resolveTargetRoot(target)
+            let policy = RemoteVerificationPolicy(mode: parseVerificationMode(mode))
+            let trustStore = loadTrustStore(path: trustStorePath)
+            let result = try await installer.install(
+                archiveURL: downloadURL,
+                target: targetRoot,
+                overwrite: overwrite,
+                manifest: manifest,
+                policy: policy,
+                trustStore: trustStore,
+                skillSlug: slug
+            )
+            switch normalized {
+            case "json":
+                let payload = RemoteInstallOutput(
+                    destination: result.skillDirectory.path,
+                    filesCopied: result.filesCopied,
+                    bytes: result.totalBytes,
+                    archiveSHA256: result.archiveSHA256,
+                    contentSHA256: result.contentSHA256,
+                    verification: result.verification.description
+                )
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(payload)
+                if let text = String(data: data, encoding: .utf8) {
+                    if let schema = schemaURL(named: "remote-install-schema.json"),
+                       let schemaText = try? String(contentsOf: schema, encoding: .utf8),
+                       !JSONValidator.validate(json: text, schema: schemaText) {
+                        fputs("WARNING: JSON output did not validate against remote-install schema\n", stderr)
+                    }
+                    print(text)
+                }
+            default:
+                print("Installed to \(result.skillDirectory.path)")
+            }
+        } catch {
+            emitRemoteError(error, format: normalized)
+            throw ExitCode(1)
         }
     }
 }
@@ -124,37 +302,222 @@ struct RemoteUpdate: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Download and overwrite with the latest version of a skill.")
     @Argument(help: "Skill slug") var slug: String
     @Option(name: .customLong("target"), help: "codex|claude|<path>; default codex") var target: String = "codex"
+    @Option(name: .customLong("format"), help: "Output format: text|json") var format: String = "json"
+    @Option(name: .customLong("mode"), help: "Verification mode: strict|permissive") var mode: String = "strict"
+    @Option(name: .customLong("trust-store"), help: "Path to trust store JSON (default: app support trust.json)") var trustStorePath: String?
     @Flag(name: .customLong("plain"), help: "Plain output") var plain: Bool = false
 
     func run() async throws {
-        let client = RemoteSkillClient.live()
-        let installer = RemoteSkillInstaller()
-        let targetRoot = resolveTargetRoot(target)
-        let downloadURL = try await client.download(slug, nil)
-        let result = try await installer.install(archiveURL: downloadURL, target: targetRoot, overwrite: true)
-        if plain {
-            print("Updated \(slug) at \(targetRoot.root.path)")
-        } else {
-            let payload: [String: Any] = [
-                "destination": result.skillDirectory.path,
-                "filesCopied": result.filesCopied,
-                "bytes": result.totalBytes,
-                "archiveSHA256": result.archiveSHA256 ?? "",
-                "contentSHA256": result.contentSHA256 ?? ""
-            ]
-            if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]),
-               let text = String(data: data, encoding: .utf8) {
-                if let schema = schemaURL(named: "remote-install-schema.json"),
-                   let schemaText = try? String(contentsOf: schema, encoding: .utf8),
-                   !JSONValidator.validate(json: text, schema: schemaText) {
-                    fputs("WARNING: JSON output did not validate against remote-install schema\n", stderr)
+        let normalized = plain ? "text" : format.lowercased()
+        do {
+            let client = RemoteSkillClient.live()
+            let installer = RemoteSkillInstaller()
+            let targetRoot = resolveTargetRoot(target)
+            let downloadURL = try await client.download(slug, nil)
+            guard let manifest = try await client.fetchManifest(slug, nil) else {
+                throw CLIError(code: "manifest_missing", message: "Manifest unavailable for \(slug).")
+            }
+            let policy = RemoteVerificationPolicy(mode: parseVerificationMode(mode))
+            let trustStore = loadTrustStore(path: trustStorePath)
+            let result = try await installer.install(
+                archiveURL: downloadURL,
+                target: targetRoot,
+                overwrite: true,
+                manifest: manifest,
+                policy: policy,
+                trustStore: trustStore,
+                skillSlug: slug
+            )
+            switch normalized {
+            case "json":
+                let payload = RemoteInstallOutput(
+                    destination: result.skillDirectory.path,
+                    filesCopied: result.filesCopied,
+                    bytes: result.totalBytes,
+                    archiveSHA256: result.archiveSHA256,
+                    contentSHA256: result.contentSHA256,
+                    verification: result.verification.description
+                )
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(payload)
+                if let text = String(data: data, encoding: .utf8) {
+                    if let schema = schemaURL(named: "remote-install-schema.json"),
+                       let schemaText = try? String(contentsOf: schema, encoding: .utf8),
+                       !JSONValidator.validate(json: text, schema: schemaText) {
+                        fputs("WARNING: JSON output did not validate against remote-install schema\n", stderr)
+                    }
+                    print(text)
                 }
-                print(text)
-            } else {
+            default:
                 print("Updated \(slug) at \(targetRoot.root.path)")
             }
+        } catch {
+            emitRemoteError(error, format: normalized)
+            throw ExitCode(1)
         }
     }
+}
+
+struct Publish: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Build and publish a deterministic skill artifact with signed attestation.")
+
+    @Option(name: .customLong("skill-dir"), help: "Path to the skill directory containing SKILL.md")
+    var skillDir: String
+
+    @Option(name: .customLong("output"), help: "Output zip path")
+    var outputPath: String = "skill-artifact.zip"
+
+    @Option(name: .customLong("attestation"), help: "Output attestation JSON path")
+    var attestationPath: String = "skill-attestation.json"
+
+    @Option(name: .customLong("tool-path"), help: "Path to the publish tool binary")
+    var toolPath: String
+
+    @Option(name: .customLong("tool-name"), help: "Publish tool name")
+    var toolName: String = "clawdhub"
+
+    @Option(name: .customLong("tool-args"), parsing: .upToNextOption, help: "Tool arguments (use {artifact} and {attestation} placeholders)")
+    var toolArgs: [String] = ["publish", "--artifact", "{artifact}", "--attestation", "{attestation}"]
+
+    @Option(name: .customLong("tool-sha256"), help: "Expected tool SHA-256 hash")
+    var toolSHA256: String?
+
+    @Option(name: .customLong("tool-sha512"), help: "Expected tool SHA-512 hash")
+    var toolSHA512: String?
+
+    @Option(name: .customLong("signing-key-base64"), help: "Ed25519 signing private key (base64)")
+    var signingKeyBase64: String?
+
+    @Option(name: .customLong("signing-key-path"), help: "Path to Ed25519 signing private key (base64)")
+    var signingKeyPath: String?
+
+    @Flag(name: .customLong("dry-run"), help: "Build artifact + attestation but do not invoke publish tool")
+    var dryRun: Bool = false
+
+    @Option(name: .customLong("format"), help: "Output format: text|json")
+    var format: String = "text"
+
+    func run() throws {
+        let normalized = format.lowercased()
+        do {
+            guard toolSHA256 != nil || toolSHA512 != nil else {
+                throw CLIError(code: "tool_hash_required", message: "Provide --tool-sha256 or --tool-sha512 for pinned publishing.")
+            }
+            let skillURL = URL(fileURLWithPath: PathUtil.expandTilde(skillDir))
+            let outputURL = URL(fileURLWithPath: PathUtil.expandTilde(outputPath))
+            let attestationURL = URL(fileURLWithPath: PathUtil.expandTilde(attestationPath))
+            let toolURL = URL(fileURLWithPath: PathUtil.expandTilde(toolPath))
+            let signingKey = try resolveSigningKey()
+            let publisher = SkillPublisher()
+            let toolConfig = SkillPublisher.ToolConfig(
+                toolPath: toolURL,
+                toolName: toolName,
+                expectedSHA256: toolSHA256,
+                expectedSHA512: toolSHA512,
+                arguments: toolArgs
+            )
+            let output: SkillPublisher.PublishOutput
+            if dryRun {
+                output = try publisher.buildOnly(
+                    skillDirectory: skillURL,
+                    outputURL: outputURL,
+                    attestationURL: attestationURL,
+                    tool: toolConfig,
+                    signingKey: signingKey
+                )
+            } else {
+                output = try publisher.buildAndPublish(
+                    skillDirectory: skillURL,
+                    outputURL: outputURL,
+                    attestationURL: attestationURL,
+                    tool: toolConfig,
+                    signingKey: signingKey
+                )
+            }
+            switch normalized {
+            case "json":
+                let payload = PublishOutput(
+                    artifactPath: output.artifactURL.path,
+                    artifactSHA256: output.artifactSHA256,
+                    attestationPath: output.attestationURL.path,
+                    signature: output.attestation.signature
+                )
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                let data = try encoder.encode(payload)
+                if let text = String(data: data, encoding: .utf8) {
+                    print(text)
+                }
+            default:
+                print("Artifact: \(output.artifactURL.path)")
+                print("Attestation: \(output.attestationURL.path)")
+                print("SHA256: \(output.artifactSHA256)")
+            }
+        } catch {
+            emitRemoteError(error, format: normalized)
+            throw ExitCode(1)
+        }
+    }
+
+    private func resolveSigningKey() throws -> SkillPublisher.SigningKey {
+        if let base64 = signingKeyBase64, !base64.isEmpty {
+            return try SkillPublisher.SigningKey.fromBase64(base64)
+        }
+        if let path = signingKeyPath, !path.isEmpty {
+            let url = URL(fileURLWithPath: PathUtil.expandTilde(path))
+            let data = try Data(contentsOf: url)
+            guard let text = String(data: data, encoding: .utf8) else {
+                throw CLIError(code: "invalid_signing_key", message: "Signing key file is not valid UTF-8.")
+            }
+            return try SkillPublisher.SigningKey.fromBase64(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        throw CLIError(code: "signing_key_required", message: "Signing key is required for attestation.")
+    }
+}
+
+private struct PublishOutput: Codable {
+    let artifactPath: String
+    let artifactSHA256: String
+    let attestationPath: String
+    let signature: String
+}
+
+private struct RemotePreviewOutput: Codable {
+    let slug: String
+    let version: String?
+    let manifest: RemoteArtifactManifest?
+    let preview: RemoteSkillPreview?
+}
+
+private struct RemoteVerifyOutput: Codable {
+    let slug: String
+    let version: String?
+    let outcome: RemoteVerificationOutcome
+    let archiveSHA256: String?
+}
+
+private struct RemoteInstallOutput: Codable {
+    let destination: String
+    let filesCopied: Int
+    let bytes: Int64
+    let archiveSHA256: String?
+    let contentSHA256: String?
+    let verification: String
+}
+
+private struct CLIError: LocalizedError {
+    let code: String
+    let message: String
+    let details: [String: String]?
+
+    init(code: String, message: String, details: [String: String]? = nil) {
+        self.code = code
+        self.message = message
+        self.details = details
+    }
+
+    var errorDescription: String? { message }
 }
 
 // Shared output helper
@@ -194,6 +557,8 @@ private func resolveTargetRoot(_ target: String) -> SkillInstallTarget {
         return .codex(PathUtil.urlFromPath("~/.codex/skills"))
     case "claude":
         return .claude(PathUtil.urlFromPath("~/.claude/skills"))
+    case "copilot":
+        return .copilot(PathUtil.urlFromPath("~/.copilot/skills"))
     default:
         return .custom(PathUtil.urlFromPath(target))
     }
@@ -204,6 +569,113 @@ private func schemaURL(named name: String) -> URL? {
     let local = cwd.appendingPathComponent("docs/schema").appendingPathComponent(name)
     if FileManager.default.fileExists(atPath: local.path) { return local }
     return Bundle.main.url(forResource: name.replacingOccurrences(of: ".json", with: ""), withExtension: "json", subdirectory: "docs/schema")
+}
+
+private struct TrustStorePayload: Codable {
+    let keys: [RemoteTrustStore.TrustedKey]
+    let revokedKeyIds: [String]
+}
+
+private func loadTrustStore(path: String?) -> RemoteTrustStore {
+    let url: URL
+    if let path, !path.isEmpty {
+        url = URL(fileURLWithPath: PathUtil.expandTilde(path))
+    } else {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        url = (base ?? FileManager.default.temporaryDirectory)
+            .appendingPathComponent("SkillsInspector", isDirectory: true)
+            .appendingPathComponent("trust.json")
+    }
+
+    guard let data = try? Data(contentsOf: url),
+          let payload = try? JSONDecoder().decode(TrustStorePayload.self, from: data) else {
+        return .ephemeral
+    }
+    let revoked = Set(payload.revokedKeyIds)
+    let allowed = payload.keys.filter { !revoked.contains($0.keyId) }
+    return RemoteTrustStore(keys: allowed)
+}
+
+private func parseVerificationMode(_ raw: String) -> RemoteVerificationMode {
+    switch raw.lowercased() {
+    case "permissive": return .permissive
+    default: return .strict
+    }
+}
+
+private struct CLIErrorEnvelope: Codable {
+    let error: CLIErrorDetail
+    let requestId: String
+}
+
+private struct CLIErrorDetail: Codable {
+    let code: String
+    let message: String
+    let details: [String: String]?
+}
+
+private func emitRemoteError(_ error: Error, format: String) {
+    let requestId = UUID().uuidString
+    let code = mapRemoteErrorCode(error)
+    let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    let details = (error as? CLIError)?.details
+    if format == "json" {
+        let envelope = CLIErrorEnvelope(
+            error: CLIErrorDetail(code: code, message: message, details: details),
+            requestId: requestId
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(envelope),
+           let text = String(data: data, encoding: .utf8) {
+            if let schema = schemaURL(named: "remote-error-schema.json"),
+               let schemaText = try? String(contentsOf: schema, encoding: .utf8),
+               !JSONValidator.validate(json: text, schema: schemaText) {
+                fputs("WARNING: JSON error output did not validate against remote-error schema\n", stderr)
+            }
+            fputs(text + "\n", stderr)
+        }
+    } else {
+        fputs("ERROR [\(code)] \(message) (requestId: \(requestId))\n", stderr)
+    }
+}
+
+private func mapRemoteErrorCode(_ error: Error) -> String {
+    if let cli = error as? CLIError {
+        return cli.code
+    }
+    if let remote = error as? RemoteInstallError {
+        switch remote {
+        case .archiveUnreadable: return "archive_unreadable"
+        case .unzipFailed: return "unzip_failed"
+        case .missingSkill: return "missing_skill"
+        case .multipleSkillsFound: return "multiple_skills_found"
+        case .validationFailed: return "validation_failed"
+        case .destinationExists: return "destination_exists"
+        case .ioFailure: return "io_failure"
+        case .verificationFailed: return "verification_failed"
+        }
+    }
+    if let publish = error as? SkillPublisher.PublishError {
+        switch publish {
+        case .invalidTool: return "publish_tool_invalid"
+        case .toolHashMismatch: return "publish_tool_hash_mismatch"
+        case .invalidSigningKey: return "publish_signing_key_invalid"
+        case .missingSigningKey: return "publish_signing_key_required"
+        case .zipFailed: return "publish_zip_failed"
+        case .toolInvocationFailed: return "publish_tool_failed"
+        case .ioFailure: return "publish_io_failure"
+        }
+    }
+    if let remote = error as? RemoteSkillClientError {
+        switch remote {
+        case .notFound: return "remote_not_found"
+        }
+    }
+    if error is URLError {
+        return "network_error"
+    }
+    return "unknown_error"
 }
 
 struct Scan: ParsableCommand {

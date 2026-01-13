@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skillsctl remote preview output",
+  "type": "object",
+  "required": ["slug"],
+  "properties": {
+    "slug": { "type": "string" },
+    "version": { "type": ["string", "null"] },
+    "manifest": { "type": ["object", "null"] },
+    "preview": { "type": ["object", "null"] }
+  },
+  "additionalProperties": false
+}

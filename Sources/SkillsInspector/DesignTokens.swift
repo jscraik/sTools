@@ -124,13 +124,23 @@ public enum DesignTokens {
 
 private extension Color {
     init(hex: String) {
-        let scanner = Scanner(string: hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")))
+        let hexString = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
         var hexNumber: UInt64 = 0
-        scanner.scanHexInt64(&hexNumber)
-        let r = Double((hexNumber & 0xFF0000) >> 16) / 255
-        let g = Double((hexNumber & 0x00FF00) >> 8) / 255
-        let b = Double(hexNumber & 0x0000FF) / 255
-        self.init(.sRGB, red: r, green: g, blue: b, opacity: 1)
+        Scanner(string: hexString).scanHexInt64(&hexNumber)
+        
+        let r, g, b, a: Double
+        if hexString.count == 8 {
+            r = Double((hexNumber & 0xFF000000) >> 24) / 255
+            g = Double((hexNumber & 0x00FF0000) >> 16) / 255
+            b = Double((hexNumber & 0x0000FF00) >> 8) / 255
+            a = Double(hexNumber & 0x000000FF) / 255
+        } else {
+            r = Double((hexNumber & 0xFF0000) >> 16) / 255
+            g = Double((hexNumber & 0x00FF00) >> 8) / 255
+            b = Double(hexNumber & 0x0000FF) / 255
+            a = 1.0
+        }
+        self.init(.sRGB, red: r, green: g, blue: b, opacity: a)
     }
 
     static func dynamicColor(lightHex: String, darkHex: String) -> Color {
@@ -149,27 +159,45 @@ private extension Color {
 #if canImport(UIKit)
 private extension UIColor {
     convenience init(hex: String) {
-        var hexString = hex
-        if hexString.hasPrefix("#") { hexString.removeFirst() }
+        let hexString = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
         var hexNumber: UInt64 = 0
         Scanner(string: hexString).scanHexInt64(&hexNumber)
-        let r = CGFloat((hexNumber & 0xFF0000) >> 16) / 255
-        let g = CGFloat((hexNumber & 0x00FF00) >> 8) / 255
-        let b = CGFloat(hexNumber & 0x0000FF) / 255
-        self.init(red: r, green: g, blue: b, alpha: 1)
+        
+        let r, g, b, a: CGFloat
+        if hexString.count == 8 {
+            r = CGFloat((hexNumber & 0xFF000000) >> 24) / 255
+            g = CGFloat((hexNumber & 0x00FF0000) >> 16) / 255
+            b = CGFloat((hexNumber & 0x0000FF00) >> 8) / 255
+            a = CGFloat(hexNumber & 0x000000FF) / 255
+        } else {
+            r = CGFloat((hexNumber & 0xFF0000) >> 16) / 255
+            g = CGFloat((hexNumber & 0x00FF00) >> 8) / 255
+            b = CGFloat(hexNumber & 0x0000FF) / 255
+            a = 1.0
+        }
+        self.init(red: r, green: g, blue: b, alpha: a)
     }
 }
 #else
 private extension NSColor {
     convenience init(hex: String) {
-        var hexString = hex
-        if hexString.hasPrefix("#") { hexString.removeFirst() }
+        let hexString = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
         var hexNumber: UInt64 = 0
         Scanner(string: hexString).scanHexInt64(&hexNumber)
-        let r = CGFloat((hexNumber & 0xFF0000) >> 16) / 255
-        let g = CGFloat((hexNumber & 0x00FF00) >> 8) / 255
-        let b = CGFloat(hexNumber & 0x0000FF) / 255
-        self.init(red: r, green: g, blue: b, alpha: 1)
+        
+        let r, g, b, a: CGFloat
+        if hexString.count == 8 {
+            r = CGFloat((hexNumber & 0xFF000000) >> 24) / 255
+            g = CGFloat((hexNumber & 0x00FF0000) >> 16) / 255
+            b = CGFloat((hexNumber & 0x0000FF00) >> 8) / 255
+            a = CGFloat(hexNumber & 0x000000FF) / 255
+        } else {
+            r = CGFloat((hexNumber & 0xFF0000) >> 16) / 255
+            g = CGFloat((hexNumber & 0x00FF00) >> 8) / 255
+            b = CGFloat(hexNumber & 0x0000FF) / 255
+            a = 1.0
+        }
+        self.init(red: r, green: g, blue: b, alpha: a)
     }
 }
 #endif

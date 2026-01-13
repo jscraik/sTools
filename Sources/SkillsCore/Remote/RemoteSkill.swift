@@ -62,12 +62,14 @@ public struct RemoteSkillDetail: Codable, Hashable, Sendable {
 public enum SkillInstallTarget: Sendable {
     case codex(URL)
     case claude(URL)
+    case copilot(URL)
     case custom(URL)
 
     public var root: URL {
         switch self {
         case let .codex(url): return url
         case let .claude(url): return url
+        case let .copilot(url): return url
         case let .custom(url): return url
         }
     }
@@ -75,6 +77,7 @@ public enum SkillInstallTarget: Sendable {
 
 /// Result of an install operation.
 public struct RemoteSkillInstallResult: Sendable {
+    public let verification: RemoteVerificationMode
     public let skillDirectory: URL
     public let filesCopied: Int
     public let totalBytes: Int64

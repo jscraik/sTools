@@ -10,6 +10,7 @@ public enum RemoteInstallError: LocalizedError {
     case validationFailed(String)
     case destinationExists(URL)
     case ioFailure(String)
+    case verificationFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -20,6 +21,7 @@ public enum RemoteInstallError: LocalizedError {
         case .validationFailed(let reason): return "Validation failed: \(reason)"
         case .destinationExists(let url): return "Destination already exists: \(url.path)"
         case .ioFailure(let reason): return "I/O failure: \(reason)"
+        case .verificationFailed(let reason): return "Verification failed: \(reason)"
         }
     }
 }
@@ -28,21 +30,48 @@ public enum RemoteInstallError: LocalizedError {
 public struct RemoteSkillInstaller: Sendable {
     public init() {}
 
+    /// Verify a downloaded archive against a manifest and trust store without installing it.
+    public func verify(
+        archiveURL: URL,
+        manifest: RemoteArtifactManifest?,
+        policy: RemoteVerificationPolicy = .default,
+        trustStore: RemoteTrustStore = .ephemeral,
+        skillSlug: String? = nil
+    ) throws -> RemoteVerificationOutcome {
+        guard FileManager.default.fileExists(atPath: archiveURL.path) else {
+            throw RemoteInstallError.archiveUnreadable
+        }
+        let outcome = try evaluateVerification(archiveURL: archiveURL, manifest: manifest, policy: policy, trustStore: trustStore, skillSlug: skillSlug)
+        if policy.mode == .strict, !outcome.issues.isEmpty {
+            throw RemoteInstallError.verificationFailed(outcome.issues.joined(separator: "; "))
+        }
+        return outcome
+    }
+
     /// Install a downloaded archive (.zip) into the given target.
     /// - Parameters:
     ///   - archiveURL: local URL to the downloaded archive (zip)
     ///   - target: installation root
     ///   - overwrite: whether to replace existing skill dir
+    ///   - manifest: optional manifest containing checksums/signature
+    ///   - policy: verification strictness and limits
+    ///   - trustStore: trusted public keys for signature validation
     /// - Returns: install result with destination and counts
     public func install(
         archiveURL: URL,
         target: SkillInstallTarget,
         overwrite: Bool = false,
-        agent: AgentKind? = nil
+        agent: AgentKind? = nil,
+        manifest: RemoteArtifactManifest? = nil,
+        policy: RemoteVerificationPolicy = .default,
+        trustStore: RemoteTrustStore = .ephemeral,
+        skillSlug: String? = nil
     ) async throws -> RemoteSkillInstallResult {
         guard FileManager.default.fileExists(atPath: archiveURL.path) else {
             throw RemoteInstallError.archiveUnreadable
         }
+
+        try verifyArchive(archiveURL: archiveURL, manifest: manifest, policy: policy, trustStore: trustStore, skillSlug: skillSlug)
 
         // 1) Extract to a temp directory
         let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent("skill-install-\(UUID().uuidString)", isDirectory: true)
@@ -51,6 +80,9 @@ public struct RemoteSkillInstaller: Sendable {
 
         // 2) Locate skill root (expect exactly one directory containing SKILL.md)
         let skillRoot = try findSkillRoot(in: tempRoot)
+
+        // 2a) Enforce extraction limits and block symlinks/absolute paths
+        try enforceExtractedLimits(at: skillRoot, limits: policy.limits)
 
         // 3) Validate SKILL.md presence and readability
         let skillFile = skillRoot.appendingPathComponent("SKILL.md")
@@ -64,6 +96,7 @@ public struct RemoteSkillInstaller: Sendable {
             switch target {
             case .codex: return .codex
             case .claude: return .claude
+            case .copilot: return .copilot
             case .custom: return agent ?? .codex
             }
         }()
@@ -116,6 +149,7 @@ public struct RemoteSkillInstaller: Sendable {
         let checksum = try? Self.sha256Hex(of: archiveURL)
         let contentChecksum = try? Self.contentSHA256(at: destination)
         return RemoteSkillInstallResult(
+            verification: policy.mode,
             skillDirectory: destination,
             filesCopied: Self.fileCount(at: destination),
             totalBytes: totalBytes,
@@ -138,14 +172,18 @@ public struct RemoteSkillInstaller: Sendable {
     }
 
     private func findSkillRoot(in directory: URL) throws -> URL {
-        let contents = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])
+        let contents = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey], options: [])
         let dirs = contents.filter { url in
             (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
         }
-        if dirs.count != 1 {
-            throw dirs.isEmpty ? RemoteInstallError.missingSkill : RemoteInstallError.multipleSkillsFound
+        let candidates = dirs.filter { dir in
+            FileManager.default.fileExists(atPath: dir.appendingPathComponent("SKILL.md").path)
         }
-        return dirs[0]
+        if candidates.count != 1 {
+            if candidates.isEmpty { throw RemoteInstallError.missingSkill }
+            throw RemoteInstallError.multipleSkillsFound
+        }
+        return candidates[0]
     }
 
     private static func directoryByteSize(at url: URL) throws -> Int64 {
@@ -170,7 +208,7 @@ public struct RemoteSkillInstaller: Sendable {
         return count
     }
 
-    private static func sha256Hex(of fileURL: URL) throws -> String {
+    public static func sha256Hex(of fileURL: URL) throws -> String {
         let data = try Data(contentsOf: fileURL)
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
@@ -194,5 +232,124 @@ public struct RemoteSkillInstaller: Sendable {
         }
         let digest = hasher.finalize()
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    // MARK: - Verification
+
+    private func verifyArchive(
+        archiveURL: URL,
+        manifest: RemoteArtifactManifest?,
+        policy: RemoteVerificationPolicy,
+        trustStore: RemoteTrustStore,
+        skillSlug: String?
+    ) throws {
+        let outcome = try evaluateVerification(archiveURL: archiveURL, manifest: manifest, policy: policy, trustStore: trustStore, skillSlug: skillSlug)
+        if policy.mode == .strict, !outcome.issues.isEmpty {
+            throw RemoteInstallError.verificationFailed(outcome.issues.joined(separator: "; "))
+        }
+    }
+
+    private func evaluateVerification(
+        archiveURL: URL,
+        manifest: RemoteArtifactManifest?,
+        policy: RemoteVerificationPolicy,
+        trustStore: RemoteTrustStore,
+        skillSlug: String?
+    ) throws -> RemoteVerificationOutcome {
+        let attrs = try FileManager.default.attributesOfItem(atPath: archiveURL.path)
+        if let size = attrs[.size] as? NSNumber, size.int64Value > policy.limits.maxArchiveBytes {
+            throw RemoteInstallError.verificationFailed("Archive exceeds size limit")
+        }
+
+        var issues: [String] = []
+        var checksumValidated = false
+        var signatureValidated = false
+        var trustedSigner = false
+
+        guard let manifest else {
+            issues.append("Manifest missing")
+            return RemoteVerificationOutcome(
+                mode: policy.mode,
+                checksumValidated: false,
+                signatureValidated: false,
+                trustedSigner: false,
+                issues: issues
+            )
+        }
+
+        if let expectedSize = manifest.size, let actualSize = attrs[.size] as? NSNumber, expectedSize != actualSize.int64Value {
+            throw RemoteInstallError.verificationFailed("Archive size mismatch")
+        }
+
+        let digest = try Self.sha256Hex(of: archiveURL)
+        if digest.lowercased() != manifest.sha256.lowercased() {
+            throw RemoteInstallError.verificationFailed("Checksum mismatch")
+        }
+        checksumValidated = true
+
+        if let signature = manifest.signature, let keyId = manifest.signerKeyId {
+            let ok = (try? trustStore.verifySignature(hexDigest: digest, signatureBase64: signature, keyId: keyId, scopeSlug: skillSlug)) ?? false
+            signatureValidated = ok
+            if !ok {
+                issues.append("Signature invalid for key \(keyId)")
+            }
+        } else {
+            issues.append("Signature missing")
+        }
+
+        if let allowed = manifest.trustedSigners, let keyId = manifest.signerKeyId {
+            if !allowed.contains(keyId) {
+                throw RemoteInstallError.verificationFailed("Signer not in trustedSigners")
+            }
+        }
+        if let revoked = manifest.revokedKeys, let keyId = manifest.signerKeyId, revoked.contains(keyId) {
+            throw RemoteInstallError.verificationFailed("Signer is revoked")
+        }
+
+        if let keyId = manifest.signerKeyId {
+            trustedSigner = trustStore.trustedKey(for: keyId, scopeSlug: skillSlug) != nil
+            if !trustedSigner {
+                issues.append("Signer not trusted locally")
+            }
+        }
+
+        return RemoteVerificationOutcome(
+            mode: policy.mode,
+            checksumValidated: checksumValidated,
+            signatureValidated: signatureValidated,
+            trustedSigner: trustedSigner,
+            issues: issues
+        )
+    }
+
+    private func enforceExtractedLimits(at root: URL, limits: RemoteVerificationLimits) throws {
+        let stats = try Self.directoryStats(at: root)
+        if stats.totalBytes > limits.maxExtractedBytes {
+            throw RemoteInstallError.verificationFailed("Extracted content exceeds size limit")
+        }
+        if stats.fileCount > limits.maxFileCount {
+            throw RemoteInstallError.verificationFailed("Extracted content exceeds file-count limit")
+        }
+        if !stats.symlinks.isEmpty {
+            throw RemoteInstallError.verificationFailed("Symlinks are not allowed: \(stats.symlinks.prefix(3))")
+        }
+    }
+
+    private static func directoryStats(at root: URL) throws -> (fileCount: Int, totalBytes: Int64, symlinks: [String]) {
+        var count = 0
+        var bytes: Int64 = 0
+        var symlinks: [String] = []
+        let fm = FileManager.default
+        let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileAllocatedSizeKey], options: [], errorHandler: nil)
+        while let url = enumerator?.nextObject() as? URL {
+            let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileAllocatedSizeKey])
+            if values.isDirectory == true { continue }
+            count += 1
+            if let size = values.fileAllocatedSize { bytes += Int64(size) }
+            if values.isSymbolicLink == true {
+                symlinks.append(url.lastPathComponent)
+            }
+        }
+        return (count, bytes, symlinks)
     }
 }

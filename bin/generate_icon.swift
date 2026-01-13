@@ -10,38 +10,35 @@ let rect = NSRect(origin: .zero, size: size)
 let tileRect = rect.insetBy(dx: 100, dy: 100)
 let cornerRadius: CGFloat = 232
 
-// Modern gradient background - blue to purple theme for inspection/analysis
+// Modern dark background - matching brand logo depths
 let backgroundPath = NSBezierPath(roundedRect: tileRect, xRadius: cornerRadius, yRadius: cornerRadius)
 
-let topColor = NSColor(calibratedRed: 59.0/255.0, green: 130.0/255.0, blue: 246.0/255.0, alpha: 1.0)     // Bright blue
-let bottomColor = NSColor(calibratedRed: 139.0/255.0, green: 92.0/255.0, blue: 246.0/255.0, alpha: 1.0) // Purple
+let topColor = NSColor(calibratedRed: 44.0/255.0, green: 62.0/255.0, blue: 80.0/255.0, alpha: 1.0)     // Dark charcoal
+let bottomColor = NSColor(calibratedRed: 20.0/255.0, green: 30.0/255.0, blue: 40.0/255.0, alpha: 1.0) // Deep black
 
 let gradient = NSGradient(starting: topColor, ending: bottomColor)!
 gradient.draw(in: backgroundPath, angle: -45)
 
-// Subtle highlight on top edge
-let highlightPath = NSBezierPath(roundedRect: tileRect.insetBy(dx: 4, dy: 4), xRadius: cornerRadius - 4, yRadius: cornerRadius - 4)
-NSColor.white.withAlphaComponent(0.2).setStroke()
-highlightPath.lineWidth = 3
+// Lime green highlight on top edge - brand signature color
+let highlightPath = NSBezierPath(roundedRect: tileRect.insetBy(dx: 6, dy: 6), xRadius: cornerRadius - 6, yRadius: cornerRadius - 6)
+NSColor(calibratedRed: 162.0/255.0, green: 208.0/255.0, blue: 51.0/255.0, alpha: 0.4).setStroke()
+highlightPath.lineWidth = 4
 highlightPath.stroke()
 
 // Deeper shadow for depth
 let glyphShadow = NSShadow()
-glyphShadow.shadowBlurRadius = 24
-glyphShadow.shadowOffset = NSSize(width: 0, height: -6)
-glyphShadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+glyphShadow.shadowBlurRadius = 32
+glyphShadow.shadowOffset = NSSize(width: 0, height: -10)
+glyphShadow.shadowColor = NSColor.black.withAlphaComponent(0.5)
 
-// Crisp white glyph
-let glyphColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
+// Draw toolbox glyph (briefcase.fill)
+let symbolConfig = NSImage.SymbolConfiguration(pointSize: 450, weight: .semibold)
+    .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(calibratedRed: 162.0/255.0, green: 208.0/255.0, blue: 51.0/255.0, alpha: 1.0)])) // Brand Green
 
-// Draw magnifying glass with document symbol - represents inspection/analysis
-let symbolConfig = NSImage.SymbolConfiguration(pointSize: 520, weight: .semibold)
-    .applying(NSImage.SymbolConfiguration(paletteColors: [glyphColor]))
-
-if let symbol = NSImage(systemSymbolName: "doc.text.magnifyingglass", accessibilityDescription: nil)?
+if let symbol = NSImage(systemSymbolName: "briefcase.fill", accessibilityDescription: nil)?
     .withSymbolConfiguration(symbolConfig) {
     
-    let targetRect = tileRect.insetBy(dx: 120, dy: 120)
+    let targetRect = tileRect.insetBy(dx: 150, dy: 150)
     let symbolSize = symbol.size
     let scale = min(targetRect.width / symbolSize.width, targetRect.height / symbolSize.height)
     let scaledSize = NSSize(width: symbolSize.width * scale, height: symbolSize.height * scale)
@@ -58,46 +55,39 @@ if let symbol = NSImage(systemSymbolName: "doc.text.magnifyingglass", accessibil
     NSGraphicsContext.restoreGraphicsState()
 }
 
-// Add a subtle checkmark badge in bottom right to indicate validation
-let badgeSize: CGFloat = 180
+// Add a blue wrench badge to represent 'Tools'
+let badgeSize: CGFloat = 220
 let badgeRect = NSRect(
-    x: tileRect.maxX - badgeSize - 60,
-    y: tileRect.minY + 60,
+    x: tileRect.maxX - badgeSize - 80,
+    y: tileRect.minY + 80,
     width: badgeSize,
     height: badgeSize
 )
 
-// Badge background circle with shadow
-let badgeShadow = NSShadow()
-badgeShadow.shadowBlurRadius = 12
-badgeShadow.shadowOffset = NSSize(width: 0, height: -3)
-badgeShadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+// Wrench in brand blue
+let wrenchConfig = NSImage.SymbolConfiguration(pointSize: 120, weight: .bold)
+    .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(calibratedRed: 52.0/255.0, green: 152.0/255.0, blue: 219.0/255.0, alpha: 1.0)])) // Brand Blue
 
-NSGraphicsContext.saveGraphicsState()
-badgeShadow.set()
-
-let badgePath = NSBezierPath(ovalIn: badgeRect)
-NSColor(calibratedRed: 16.0/255.0, green: 185.0/255.0, blue: 129.0/255.0, alpha: 1.0).setFill() // Emerald green
-badgePath.fill()
-
-NSGraphicsContext.restoreGraphicsState()
-
-// Checkmark in badge
-let checkmarkConfig = NSImage.SymbolConfiguration(pointSize: 100, weight: .bold)
-    .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor.white]))
-
-if let checkmark = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
-    .withSymbolConfiguration(checkmarkConfig) {
+if let wrench = NSImage(systemSymbolName: "wrench.fill", accessibilityDescription: nil)?
+    .withSymbolConfiguration(wrenchConfig) {
     
-    let checkmarkSize = checkmark.size
-    let checkmarkRect = NSRect(
-        x: badgeRect.midX - checkmarkSize.width / 2,
-        y: badgeRect.midY - checkmarkSize.height / 2 + 5,
-        width: checkmarkSize.width,
-        height: checkmarkSize.height
+    let wrenchSize = wrench.size
+    let wrenchRect = NSRect(
+        x: badgeRect.midX - wrenchSize.width / 2,
+        y: badgeRect.midY - wrenchSize.height / 2,
+        width: wrenchSize.width,
+        height: wrenchSize.height
     )
     
-    checkmark.draw(in: checkmarkRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+    NSGraphicsContext.saveGraphicsState()
+    let wrenchShadow = NSShadow()
+    wrenchShadow.shadowBlurRadius = 15
+    wrenchShadow.shadowOffset = NSSize(width: 0, height: -5)
+    wrenchShadow.shadowColor = NSColor.black.withAlphaComponent(0.4)
+    wrenchShadow.set()
+    
+    wrench.draw(in: wrenchRect, from: .zero, operation: .sourceOver, fraction: 1.0)
+    NSGraphicsContext.restoreGraphicsState()
 }
 
 image.unlockFocus()

@@ -144,10 +144,13 @@ brand/
 
 ### Brand Check Script
 
-If available, run the brand compliance checker:
+If available, run the brand compliance checker manually or use available linting tools:
 
 ```bash
-python scripts/check_brand_guidelines.py --repo . --docs README.md
+# Manual brand compliance check
+# Verify documentation signature is present
+# Check brand assets exist in brand/ directory
+# Validate color usage against guidelines
 ```
 
 **Expected Output:**
@@ -188,13 +191,17 @@ If user requests to install brand guidelines:
 1. **Copy brand guidelines file:**
 
    ```bash
-   cp references/BRAND_GUIDELINES.md brand/BRAND_GUIDELINES.md
+   # Copy brand guidelines to your repository
+   # Source: Official brAInwav brand guidelines
+   cp BRAND_GUIDELINES.md brand/BRAND_GUIDELINES.md
    ```
 
 2. **Copy brand assets:**
 
    ```bash
-   cp -r assets/brand/* brand/
+   # Copy brand assets to your repository  
+   # Include: brand-mark.png, @2x versions, webp formats
+   cp brand-assets/* brand/
    ```
 
 3. **Verify installation:**

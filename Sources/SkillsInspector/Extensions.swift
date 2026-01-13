@@ -211,37 +211,32 @@ extension View {
 
 struct SkeletonFindingRow: View {
     var body: some View {
-        HStack(alignment: .top, spacing: DesignTokens.Spacing.xxxs) {
-            // Severity indicator
-            Circle()
-                .fill(DesignTokens.Colors.Background.secondary)
-                .frame(width: 16, height: 16)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: DesignTokens.Spacing.xxxs) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(DesignTokens.Colors.Background.secondary)
+                    .frame(width: 120, height: 16)
+                Spacer()
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(DesignTokens.Colors.Background.secondary)
+                    .frame(width: 60, height: 16)
+            }
             
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair) {
-                // Header
-                HStack(spacing: DesignTokens.Spacing.hair + DesignTokens.Spacing.micro) {
-                    RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
-                        .fill(DesignTokens.Colors.Background.secondary)
-                        .frame(width: 100, height: 12)
-                    
-                    RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
-                        .fill(DesignTokens.Colors.Background.secondary)
-                        .frame(width: 50, height: 12)
-                }
-                
-                // Message
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+            RoundedRectangle(cornerRadius: 4)
+                .fill(DesignTokens.Colors.Background.secondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 14)
+            
+            HStack(spacing: 4) {
+                RoundedRectangle(cornerRadius: 2)
                     .fill(DesignTokens.Colors.Background.secondary)
-                    .frame(height: 14)
-                
-                // File path
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                    .frame(width: 80, height: 10)
+                RoundedRectangle(cornerRadius: 2)
                     .fill(DesignTokens.Colors.Background.secondary)
-                    .frame(width: 150, height: 10)
+                    .frame(width: 30, height: 10)
             }
         }
-        .padding(.vertical, DesignTokens.Spacing.hair + DesignTokens.Spacing.micro)
-        .padding(.horizontal, DesignTokens.Spacing.xxs)
+        .padding(8)
         .shimmer()
     }
 }
@@ -321,18 +316,8 @@ extension View {
             .padding(DesignTokens.Spacing.xxs)
             .background(
                 Group {
-                    if #available(iOS 26, macOS 15, *) {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(.clear)
-                            .glassEffect(
-                                .regular
-                                    .tint(tint.opacity(selected ? 0.22 : 0.12)),
-                                in: .rect(cornerRadius: 12)
-                            )
-                    } else {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(DesignTokens.Colors.Background.primary.opacity(0.9))
-                    }
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(DesignTokens.Colors.Background.primary.opacity(selected ? 0.95 : 0.9))
                 }
             )
             .overlay(
@@ -346,30 +331,21 @@ extension View {
     /// Glass panel background with fallback for pre-glass platforms.
     func glassPanelStyle(cornerRadius: CGFloat = 14, tint: Color = Color.primary.opacity(0.08)) -> some View {
         Group {
-            if #available(iOS 26, macOS 15, *) {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.clear)
-                    .glassEffect(.regular.tint(tint), in: .rect(cornerRadius: cornerRadius))
-            } else {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(DesignTokens.Colors.Background.secondary.opacity(0.92))
-                    .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
-            }
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(DesignTokens.Colors.Background.secondary.opacity(0.92))
+                .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
         }
     }
 
     /// Glass bar/background for toolbars and headers.
     func glassBarStyle(cornerRadius: CGFloat = 10, tint: Color = Color.primary.opacity(0.06)) -> some View {
-        Group {
-            if #available(iOS 26, macOS 15, *) {
-                Color.clear
-                    .glassEffect(.regular.tint(tint), in: .rect(cornerRadius: cornerRadius))
-            } else {
-                Color(.windowBackgroundColor)
-                    .opacity(0.35)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
-            }
-        }
+        DesignTokens.Colors.Background.secondary
+            .opacity(0.8)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(DesignTokens.Colors.Border.light, lineWidth: 0.5)
+            )
     }
 }
 
@@ -483,16 +459,8 @@ struct GlassButtonStyle: ButtonStyle {
             .padding(.horizontal, DesignTokens.Spacing.xxs)
             .padding(.vertical, DesignTokens.Spacing.xxxs)
             .background(
-                Group {
-                    if #available(iOS 26, macOS 15, *) {
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                            .fill(.clear)
-                            .glassEffect(.regular.tint(Color.primary.opacity(configuration.isPressed ? 0.15 : 0.08)))
-                    } else {
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                            .fill(DesignTokens.Colors.Background.secondary.opacity(configuration.isPressed ? 0.8 : 0.6))
-                    }
-                }
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
+                    .fill(DesignTokens.Colors.Background.secondary.opacity(configuration.isPressed ? 0.8 : 0.6))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
@@ -509,16 +477,8 @@ struct GlassProminentButtonStyle: ButtonStyle {
             .padding(.horizontal, DesignTokens.Spacing.xxs)
             .padding(.vertical, DesignTokens.Spacing.xxxs)
             .background(
-                Group {
-                    if #available(iOS 26, macOS 15, *) {
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                            .fill(.clear)
-                            .glassEffect(.regular.tint(Color.accentColor.opacity(configuration.isPressed ? 0.25 : 0.15)))
-                    } else {
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                            .fill(Color.accentColor.opacity(configuration.isPressed ? 0.8 : 0.6))
-                    }
-                }
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
+                    .fill(Color.accentColor.opacity(configuration.isPressed ? 0.8 : 0.6))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)

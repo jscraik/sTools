@@ -1,5 +1,7 @@
 # sTools
 
+**Developer toolkit for Codex/Claude skill trees**
+
 <p align="center">
   <img
     src="brand/sTools-brand-logo.png"
@@ -9,23 +11,33 @@
   />
 </p>
 
-Developer toolkit for Codex/Claude skill trees:
+sTools helps you validate, sync, and manage skill documentation across AI agent platforms (Codex and Claude). It provides three ways to work with your skills:
 
-- **SkillsCore** engine (scan/check/sync with incremental cache + parallel validation)
-- **skillsctl** CLI (scan, sync-check, index; JSON/text; watch; cache stats; completions)
-- **sTools app** (formerly SkillsInspector) SwiftUI macOS experience for interactive scan/sync with quick actions
-- **SkillsLintPlugin** SwiftPM command plugin for CI (`swift package plugin skills-lint`)
+- **sTools app** (formerly SkillsInspector): Interactive macOS app for scanning and syncing skills
+- **skillsctl CLI**: Command-line tool for CI/CD integration and scripting  
+- **SkillsLintPlugin**: SwiftPM plugin for automated validation in your build process
+
+**Core capabilities:**
+
+- Scan and validate SKILL.md files with parallel processing
+- Compare skill trees between Codex and Claude platforms
+- Generate skill indexes and manage versions
+- Incremental caching for fast re-validation
+- Watch mode for development workflows
 
 ## Contents
 
 - [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Glossary](#glossary)
 - [Build & Test](#build--test)
-- [CLI quickstart (repo-first)](#cli-quickstart-repo-first)
+- [CLI Usage](#cli-usage)
 - [Shell completion](#shell-completion)
 - [SwiftPM plugin (CI)](#swiftpm-plugin-ci)
 - [sTools app](#stools-app-macos)
 - [Configuration](#configuration)
 - [Performance Features](#performance-features)
+- [Troubleshooting](#troubleshooting)
 - [DocC](#docc)
 - [Project structure](#project-structure)
 - [Verification](#verification)
@@ -33,22 +45,87 @@ Developer toolkit for Codex/Claude skill trees:
 
 ## Prerequisites
 
-- macOS 26 SDK (Xcode 26 / Xcode-beta 26)
-- Swift 6.2 toolchain
+- macOS 15+ SDK (Xcode 16+ or Xcode-beta)
+- Swift 6.0+ toolchain
 
 ## Build & Test
 
 ```bash
-DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer" swift test
+# Build the project
+swift build
+
+# Run tests (set ALLOW_CHARTS_SNAPSHOT=1 to include chart snapshots)
+swift test
+
+# Expected output: All tests should pass with possible chart snapshot skips
+# ✓ Tests passed (X tests, Y skipped)
 ```
 
-## CLI quickstart (repo-first)
+**Verify installation:**
 
 ```bash
-# Scan repo-scoped skills (preferred for CI) - uses cache automatically
+# Check CLI is working
+swift run skillsctl --help
+# Expected: Help text showing available commands (scan, sync-check, etc.)
+
+# Test basic scan (should exit cleanly on empty repo)
+swift run skillsctl scan --repo . --allow-empty
+# Expected: "No SKILL.md files found" message, exit code 0
+```
+
+## Quick Start
+
+**For CLI users (recommended for CI/automation):**
+
+```bash
+# Scan skills in current repository
+swift run skillsctl scan --repo .
+
+# Expected output: List of validation findings or "No issues found"
+# Exit code: 0 (success), 1 (validation errors), 2 (usage error)
+```
+
+**For GUI users:**
+
+```bash
+# Launch the sTools app
+swift run sTools
+
+# The app will open with folder pickers for Codex and Claude skill roots
+# Default locations: ~/.codex/skills and ~/.claude/skills
+```
+
+**For CI integration:**
+
+```bash
+# Add to your Swift package
+swift package plugin skills-lint
+
+# Expected: Validation results as Xcode diagnostics
+```
+
+## Glossary
+
+**Key terms used throughout sTools:**
+
+- **Skill**: A documented capability or instruction set, stored as a SKILL.md file
+- **Skill tree**: A directory structure containing multiple skills for an AI agent
+- **Agent**: The AI platform (Codex or Claude) that uses the skills
+- **Root**: The top-level directory containing a skill tree (e.g., `~/.codex/skills`)
+- **Validation**: Checking skills for proper format, required fields, and consistency
+- **Sync**: Comparing skill trees between different agents to find differences
+- **Baseline**: A saved list of known validation issues to ignore
+- **Finding**: A validation issue discovered during scanning (error, warning, or info)
+
+## CLI Usage
+
+**Basic scanning:**
+
+```bash
+# Scan repository skills (preferred for CI)
 skillsctl scan --repo . --format json
 
-# Scan home scopes with parallel validation
+# Scan home directories with parallel validation
 skillsctl scan --codex ~/.codex/skills --claude ~/.claude/skills --default-excludes
 
 # Watch mode for development (auto-rescan on file changes)
@@ -147,6 +224,65 @@ CLI defaults:
 - Default excludes: `.git`, `.system`, `__pycache__`, `.DS_Store` (disable with `--no-default-excludes`).
 - Baselining/ignores: auto-load `.skillsctl/baseline.json` and `.skillsctl/ignore.json` when present.
 - Cache: stored at `<repo>/.skillsctl/cache.json` (disable with `--no-cache`; stats via `--show-cache-stats`).
+
+## Troubleshooting
+
+### Common Issues
+
+**Problem: "No SKILL.md files found" but files exist**
+
+```bash
+# Check if files are being excluded
+skillsctl scan --repo . --no-default-excludes --log-level debug
+```
+
+**Solution:** Files may be in excluded directories (.git, .system, **pycache**, .DS_Store). Use `--no-default-excludes` or check your exclude patterns.
+
+**Problem: "Command not found: skillsctl"**
+
+```bash
+# Use full Swift run command
+swift run skillsctl scan --repo .
+```
+
+**Solution:** skillsctl is not installed globally. Use `swift run skillsctl` or build and install the binary.
+
+**Problem: Validation errors on valid SKILL.md files**
+
+```bash
+# Check specific validation rules
+skillsctl scan --repo . --format json | jq '.findings[] | select(.severity=="error")'
+```
+
+**Solution:** Review the specific rule violations. Common issues include missing frontmatter, incorrect naming patterns, or missing required sections.
+
+**Problem: sTools app won't launch**
+
+```bash
+# Check build status
+swift build --product sTools
+# Launch with error output
+swift run sTools 2>&1
+```
+
+**Solution:** Ensure all dependencies are built. Check console output for specific errors.
+
+**Problem: Cache issues or stale results**
+
+```bash
+# Clear cache and rescan
+skillsctl scan --repo . --no-cache
+# Or clear from app settings
+```
+
+**Solution:** Cache may be corrupted. Disable caching temporarily or clear cache files.
+
+### Getting Help
+
+- Check `skillsctl --help` for command options
+- Use `--log-level debug` for detailed output
+- Review validation rules in the source code
+- Check configuration schema in `docs/config-schema.json`
 
 ## Performance Features
 
@@ -267,6 +403,50 @@ open Docs.doccarchive
 - `Tests/`: unit tests (core + inspector view models)
 
 ## Verification
+
+**Document Requirements:**
+
+- **Audience:** Developers and CI maintainers
+- **Scope:** Build verification and testing procedures
+- **Owner:** sTools maintainers  
+- **Last updated:** 2026-01-12
+
+**Test the complete build:**
+
+```bash
+# Run full test suite
+swift test
+# Expected: All tests pass, possible chart snapshot skips
+
+# Verify CLI functionality
+swift run skillsctl --help
+# Expected: Help text with scan, sync-check, index commands
+
+# Test basic operations
+swift run skillsctl scan --repo . --allow-empty
+# Expected: Clean exit (code 0) with "No SKILL.md files found"
+```
+
+**Verify app functionality:**
+
+```bash
+# Build and launch GUI
+swift build --product sTools
+swift run sTools
+# Expected: macOS app opens with folder pickers
+```
+
+**Check plugin integration:**
+
+```bash
+# List available plugins
+swift package plugin --list
+# Expected: skills-lint appears in output
+
+# Test plugin execution
+swift package plugin skills-lint
+# Expected: Validation results or "No issues found"
+```
 
 - Unit tests: `swift test`
 - JSON schema references: `docs/schema/findings-schema.json`, `docs/config-schema.json`, `docs/baseline-schema.json`

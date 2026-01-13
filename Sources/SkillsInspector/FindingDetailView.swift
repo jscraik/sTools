@@ -14,205 +14,278 @@ struct FindingDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
-                // Header Card
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-                    HStack(spacing: DesignTokens.Spacing.xxxs) {
-                        Image(systemName: finding.severity.icon)
-                            .foregroundStyle(finding.severity.color)
-                            .font(.title2)
-                        Text(finding.severity.rawValue.uppercased())
-                            .captionText(emphasis: true)
-                            .foregroundStyle(finding.severity.color)
-                            .padding(.horizontal, DesignTokens.Spacing.xxxs)
-                            .padding(.vertical, DesignTokens.Spacing.hair)
-                            .background(finding.severity.color.opacity(0.15))
-                            .cornerRadius(DesignTokens.Radius.sm)
-                    }
-                    
-                    Text(finding.ruleID)
-                        .font(.system(.title3, design: .monospaced))
-                        .fontWeight(.medium)
-                    
-                    Divider()
-                    
-                    // Message
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair + DesignTokens.Spacing.micro) {
-                        Text("Message")
-                            .captionText()
-                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                            .textCase(.uppercase)
-                        Text(finding.message)
-                            .bodyText()
-                            .textSelection(.enabled)
-                    }
-                }
-                .padding(DesignTokens.Spacing.xs)
-                .background(glassPanelStyle(cornerRadius: DesignTokens.Radius.lg, tint: finding.severity.color.opacity(0.08)))
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
+                headerCard
+                messageCard
+                detailsCard
                 
-                // Details Card
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-                    HStack(spacing: DesignTokens.Spacing.xxxs) {
-                        Image(systemName: "info.circle.fill")
-                            .foregroundStyle(DesignTokens.Colors.Accent.blue)
-                        Text("Details")
-                            .heading3()
-                    }
-                    
-                    Divider()
-                    
-                    detailRow(icon: finding.agent.icon, label: "Agent", value: finding.agent.rawValue.capitalized, color: finding.agent.color)
-                    detailRow(icon: "doc", label: "File", value: finding.fileURL.lastPathComponent)
-                    detailRow(icon: "folder", label: "Path", value: finding.fileURL.deletingLastPathComponent().path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
-                    if let line = finding.line {
-                        detailRow(icon: "number", label: "Line", value: "\(line)")
-                    }
-                }
-                .padding(DesignTokens.Spacing.xs)
-                .background(glassPanelStyle(cornerRadius: DesignTokens.Radius.lg, tint: DesignTokens.Colors.Accent.blue.opacity(0.06)))
-                
-                // Markdown Preview Card (only for .md files)
                 if finding.fileURL.pathExtension.lowercased() == "md" {
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-                        HStack {
-                            Image(systemName: "doc.richtext")
-                                .foregroundStyle(DesignTokens.Colors.Accent.purple)
-                            Text("Markdown Preview")
-                                .heading3()
-                            Spacer()
-                            Toggle("", isOn: $showPreview)
-                                .toggleStyle(.switch)
-                                .labelsHidden()
-                        }
-                        
-                        if showPreview {
-                            Divider()
-                            
-                            if let content = markdownContent {
-                                MarkdownPreviewView(content: content)
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 400)
-                                    .background(glassPanelStyle(cornerRadius: DesignTokens.Radius.md, tint: DesignTokens.Colors.Accent.purple.opacity(0.06)))
-                            } else {
-                                ProgressView("Loading...")
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 200)
-                            }
-                        }
-                    }
-                    .padding(DesignTokens.Spacing.xs)
-                    .background(glassPanelStyle(cornerRadius: DesignTokens.Radius.lg, tint: DesignTokens.Colors.Accent.purple.opacity(0.05)))
-                    .onAppear {
-                        loadMarkdownContent()
-                    }
+                    markdownCard
                 }
                 
-                // Suggested Fix Card (if available)
-                if let fix = finding.suggestedFix {
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-                        HStack(spacing: DesignTokens.Spacing.xxxs) {
-                            Image(systemName: "wrench.and.screwdriver.fill")
-                                .foregroundStyle(DesignTokens.Colors.Accent.green)
-                            Text("Suggested Fix")
-                                .heading3()
-                        }
-                        
-                        Divider()
-                        
-                        Text(fix.description)
-                            .bodyText()
-                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                        
-                        if fix.automated {
-                            Button {
-                                applyFix(fix)
-                            } label: {
-                                Label("Apply Fix Automatically", systemImage: "wand.and.stars")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
-                        } else {
-                            Label("Manual fix required - open in editor", systemImage: "hand.point.up")
-                                .captionText()
-                                .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                        }
-                    }
-                    .padding(DesignTokens.Spacing.xs)
-                    .background(glassPanelStyle(cornerRadius: DesignTokens.Radius.lg, tint: DesignTokens.Colors.Accent.blue.opacity(0.06)))
+                if finding.suggestedFix != nil {
+                    suggestedFixCard
                 }
                 
-                // Actions Card
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-                    HStack(spacing: DesignTokens.Spacing.xxxs) {
-                        Image(systemName: "bolt.fill")
-                            .foregroundStyle(DesignTokens.Colors.Accent.orange)
-                        Text("Actions")
-                            .heading3()
-                    }
-                    
-                    Divider()
-                    
-                    VStack(spacing: DesignTokens.Spacing.xxxs) {
-                        Menu {
-                            ForEach(EditorIntegration.installedEditors, id: \.self) { editor in
-                                Button {
-                                    FindingActions.openInEditor(finding.fileURL, line: finding.line, editor: editor)
-                                } label: {
-                                    Label(editor.rawValue, systemImage: editor.icon)
-                                }
-                            }
-                        } label: {
-                            Label("Open in Editor", systemImage: "pencil")
-                                .frame(maxWidth: .infinity)
-                        } primaryAction: {
-                            FindingActions.openInEditor(finding.fileURL, line: finding.line)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                        
-                        HStack(spacing: 8) {
-                            Button {
-                                FindingActions.showInFinder(finding.fileURL)
-                            } label: {
-                                Label("Show in Finder", systemImage: "folder")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            
-                            Button {
-                                addToBaseline()
-                            } label: {
-                                Label("Add to Baseline", systemImage: "checkmark.circle")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
-                .padding(DesignTokens.Spacing.xs)
-                .background(glassPanelStyle(cornerRadius: DesignTokens.Radius.lg, tint: DesignTokens.Colors.Accent.orange.opacity(0.06)))
+                actionsCard
             }
-            .padding(DesignTokens.Spacing.xs)
+            .padding(DesignTokens.Spacing.sm)
         }
+        .onAppear { loadMarkdownContent() }
         .toast($toastMessage)
     }
 
-    private func detailRow(icon: String, label: String, value: String, color: Color = .primary) -> some View {
-        HStack(alignment: .top, spacing: DesignTokens.Spacing.xxxs) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-                .frame(width: 20)
-                .font(.callout)
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.micro) {
-                Text(label)
-                    .captionText()
-                    .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                Text(value)
-                    .font(.system(.callout, design: label == "File" || label == "Path" ? .monospaced : .default))
-                    .textSelection(.enabled)
+    // MARK: - Cards
+    private var headerCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+            HStack(spacing: DesignTokens.Spacing.xxxs) {
+                Image(systemName: finding.severity.icon)
+                    .foregroundStyle(finding.severity.color)
+                    .font(.title2)
+                Text(finding.severity.rawValue.uppercased())
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(finding.severity.color)
+                    .padding(.horizontal, DesignTokens.Spacing.xxxs)
+                    .padding(.vertical, 2)
+                    .background(finding.severity.color.opacity(0.15))
+                    .cornerRadius(DesignTokens.Radius.sm)
+                
+                Spacer()
+                
+                HStack(spacing: DesignTokens.Spacing.xxxs) {
+                    Image(systemName: finding.agent.icon)
+                    Text(finding.agent.displayName.uppercased())
+                }
+                .font(.system(size: 9, weight: .black))
+                .foregroundStyle(finding.agent.color)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(finding.agent.color.opacity(0.1))
+                .cornerRadius(DesignTokens.Radius.sm)
+            }
+            
+            Text(finding.ruleID)
+                .font(.system(.title3, design: .monospaced))
+                .fontWeight(.bold)
+        }
+        .padding(DesignTokens.Spacing.sm)
+        .background(DesignTokens.Colors.Background.secondary.opacity(0.4))
+        .cornerRadius(DesignTokens.Radius.md)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                .stroke(finding.severity.color.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    private var messageCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Finding Message")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                .textCase(.uppercase)
+            
+            Text(finding.message)
+                .font(.system(.body, design: .serif))
+                .italic()
+                .foregroundStyle(DesignTokens.Colors.Text.primary)
+                .lineSpacing(4)
+                .textSelection(.enabled)
+        }
+        .padding(DesignTokens.Spacing.sm)
+        .background(DesignTokens.Colors.Background.secondary.opacity(0.4))
+        .cornerRadius(DesignTokens.Radius.md)
+    }
+
+    private var detailsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "info.circle.fill")
+                    .foregroundStyle(DesignTokens.Colors.Accent.blue)
+                Text("Metadata Details")
+                    .heading3()
+            }
+            
+            VStack(spacing: 1) {
+                detailRow(icon: "doc.text", label: "File", value: finding.fileURL.lastPathComponent)
+                detailRow(icon: "folder", label: "Path", value: finding.fileURL.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
+                if let line = finding.line {
+                    detailRow(icon: "text.alignleft", label: "Line", value: "\(line)")
+                }
+            }
+            .padding(4)
+            .background(DesignTokens.Colors.Background.tertiary.opacity(0.3))
+            .cornerRadius(DesignTokens.Radius.sm)
+        }
+        .padding(DesignTokens.Spacing.sm)
+        .background(DesignTokens.Colors.Background.secondary.opacity(0.4))
+        .cornerRadius(DesignTokens.Radius.md)
+    }
+
+    private var markdownCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "doc.richtext")
+                    .foregroundStyle(DesignTokens.Colors.Accent.purple)
+                Text("Markdown Preview")
+                    .heading3()
+                Spacer()
+                Toggle("", isOn: $showPreview)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .labelsHidden()
+            }
+            
+            if showPreview {
+                if let content = markdownContent {
+                    MarkdownPreviewView(content: content)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 200, maxHeight: 400)
+                        .background(DesignTokens.Colors.Background.primary)
+                        .cornerRadius(DesignTokens.Radius.sm)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                } else {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 100)
+                }
             }
         }
+        .padding(DesignTokens.Spacing.sm)
+        .background(DesignTokens.Colors.Accent.purple.opacity(0.05))
+        .cornerRadius(DesignTokens.Radius.md)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                .stroke(DesignTokens.Colors.Accent.purple.opacity(0.1), lineWidth: 1)
+        )
+    }
+
+    private var suggestedFixCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let fix = finding.suggestedFix {
+                HStack {
+                    Label("Suggested Fix", systemImage: "wand.and.stars")
+                        .heading3()
+                        .foregroundStyle(DesignTokens.Colors.Accent.green)
+                    
+                    Spacer()
+                    
+                    if fix.automated {
+                        Text("Automated")
+                            .font(.system(size: 8, weight: .black))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(DesignTokens.Colors.Accent.green.opacity(0.2))
+                            .foregroundStyle(DesignTokens.Colors.Accent.green)
+                            .cornerRadius(4)
+                    }
+                }
+                
+                Text(fix.description)
+                    .font(.system(size: 13))
+                    .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                
+                if !fix.changes.isEmpty {
+                    FixDiffView(changes: fix.changes)
+                        .frame(maxHeight: 300)
+                        .cornerRadius(DesignTokens.Radius.sm)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                                .stroke(DesignTokens.Colors.Border.light, lineWidth: 1)
+                        )
+                }
+
+                if fix.automated {
+                    Button {
+                        applyFix(fix)
+                    } label: {
+                        Label("Apply Correction", systemImage: "magicmouse")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.customGlassProminent)
+                    .tint(DesignTokens.Colors.Accent.green)
+                    .controlSize(.large)
+                } else {
+                    HStack {
+                        Image(systemName: "hand.point.up.fill")
+                        Text("Manual intervention required")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                }
+            }
+        }
+        .padding(DesignTokens.Spacing.sm)
+        .background(DesignTokens.Colors.Accent.green.opacity(0.03))
+        .cornerRadius(DesignTokens.Radius.md)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                .stroke(DesignTokens.Colors.Accent.green.opacity(0.15), lineWidth: 1)
+        )
+    }
+
+    private var actionsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Quick Actions", systemImage: "bolt.fill")
+                    .heading3()
+                    .foregroundStyle(DesignTokens.Colors.Accent.orange)
+                Spacer()
+            }
+            
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                Button {
+                    FindingActions.openInEditor(finding.fileURL, line: finding.line)
+                } label: {
+                    Label("Open Editor", systemImage: "pencil.and.outline")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.customGlass)
+                
+                Button {
+                    addToBaseline()
+                } label: {
+                    Label("Add to Baseline", systemImage: "archivebox")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.customGlass)
+                
+                Button {
+                    FindingActions.showInFinder(finding.fileURL)
+                } label: {
+                    Label("Finder", systemImage: "folder")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.customGlass)
+            }
+        }
+        .padding(DesignTokens.Spacing.sm)
+        .background(DesignTokens.Colors.Accent.orange.opacity(0.05))
+        .cornerRadius(DesignTokens.Radius.md)
+    }
+
+    // MARK: - Helpers
+    private func detailRow(icon: String, label: String, value: String, color: Color = .primary) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .font(.system(size: 10))
+                .frame(width: 16)
+            
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                .frame(width: 40, alignment: .leading)
+            
+            Text(value)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(DesignTokens.Colors.Text.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            
+            Spacer()
+        }
+        .padding(.vertical, 4)
     }
     
     private func addToBaseline() {
@@ -226,9 +299,9 @@ struct FindingDetailView: View {
         
         do {
             try FindingActions.addToBaseline(finding, baselineURL: baselineURL)
-            toastMessage = ToastMessage(style: .success, message: "Added to baseline")
+            toastMessage = ToastMessage(style: .success, message: "Added finding to baseline")
         } catch {
-            toastMessage = ToastMessage(style: .error, message: "Failed to add to baseline")
+            toastMessage = ToastMessage(style: .error, message: "Failed to update baseline")
         }
     }
     
@@ -248,11 +321,11 @@ struct FindingDetailView: View {
         let result = FixEngine.applyFix(fix)
         switch result {
         case .success:
-            toastMessage = ToastMessage(style: .success, message: "Fix applied successfully! Re-scan to verify.")
+            toastMessage = ToastMessage(style: .success, message: "Fix applied! Re-scan to verify.")
         case .failed(let error):
-            toastMessage = ToastMessage(style: .error, message: "Failed to apply fix: \(error)")
+            toastMessage = ToastMessage(style: .error, message: "Fix failed: \(error)")
         case .notApplicable:
-            toastMessage = ToastMessage(style: .warning, message: "Fix is not applicable to current file state.")
+            toastMessage = ToastMessage(style: .warning, message: "File state changed, fix no longer applicable.")
         }
     }
     
@@ -265,182 +338,66 @@ struct FindingDetailView: View {
                 }
             } catch {
                 await MainActor.run {
-                    markdownContent = "**Error loading file:** \(error.localizedDescription)"
+                    markdownContent = "*Error loading source file.*"
                 }
             }
         }
     }
+}
 
-    // MARK: - Cards
-    private var headerCard: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
-            HStack(spacing: DesignTokens.Spacing.xxxs) {
-                Image(systemName: finding.severity.icon)
-                    .foregroundStyle(finding.severity.color)
-                    .font(.title2)
-                Text(finding.severity.rawValue.uppercased())
-                    .captionText(emphasis: true)
-                    .foregroundStyle(finding.severity.color)
-                    .padding(.horizontal, DesignTokens.Spacing.xxxs)
-                    .padding(.vertical, DesignTokens.Spacing.hair)
-                    .background(finding.severity.color.opacity(0.15))
-                    .cornerRadius(DesignTokens.Radius.sm)
+// MARK: - FixDiffView
+struct FixDiffView: View {
+    let changes: [FileChange]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(changes, id: \.self) { change in
+                VStack(alignment: .leading, spacing: 0) {
+                    let oldLines = change.originalText.components(separatedBy: .newlines)
+                    let newLines = change.replacementText.components(separatedBy: .newlines)
+                    
+                    ForEach(oldLines.indices, id: \.self) { i in
+                        diffLine(text: oldLines[i], type: .deleted, line: change.startLine + i)
+                    }
+                    
+                    ForEach(newLines.indices, id: \.self) { i in
+                        diffLine(text: newLines[i], type: .added, line: change.startLine + i)
+                    }
+                }
+                if change != changes.last {
+                    Divider()
+                }
             }
+        }
+        .padding(6)
+        .background(DesignTokens.Colors.Background.primary)
+    }
+    
+    private enum LineType {
+        case added, deleted
+        var prefix: String { self == .added ? "+" : "-" }
+        var color: Color { self == .added ? DesignTokens.Colors.Status.success : DesignTokens.Colors.Status.error }
+        var background: Color { color.opacity(0.12) }
+    }
+    
+    private func diffLine(text: String, type: LineType, line: Int) -> some View {
+        HStack(spacing: 8) {
+            Text("\(line)")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                .frame(width: 24, alignment: .trailing)
             
-            Text(finding.ruleID)
-                .font(.system(.title3, design: .monospaced))
-                .fontWeight(.medium)
-        }
-        .cardStyle(tint: finding.severity.color)
-    }
-    
-    private var messageCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Message")
-                .font(.system(size: DesignTokens.Typography.Caption.size, weight: DesignTokens.Typography.Caption.weight))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-            Text(finding.message)
-                .font(.system(size: DesignTokens.Typography.Body.size, weight: DesignTokens.Typography.Body.weight))
-                .textSelection(.enabled)
-        }
-        .cardStyle()
-    }
-    
-    private var detailsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "info.circle.fill")
-                    .foregroundStyle(.blue)
-                Text("Details")
-                    .font(.system(size: DesignTokens.Typography.Heading3.size, weight: DesignTokens.Typography.Heading3.weight))
-            }
-            detailRow(icon: finding.agent.icon, label: "Agent", value: finding.agent.rawValue.capitalized, color: finding.agent.color)
-            detailRow(icon: "doc", label: "File", value: finding.fileURL.lastPathComponent)
-            detailRow(icon: "folder", label: "Path", value: finding.fileURL.deletingLastPathComponent().path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))
-            if let line = finding.line {
-                detailRow(icon: "number", label: "Line", value: "\(line)")
-            }
-        }
-        .cardStyle()
-    }
-    
-    private var markdownCard: some View {
-        Group {
-            if finding.fileURL.pathExtension.lowercased() == "md" {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: "doc.richtext")
-                            .foregroundStyle(DesignTokens.Colors.Accent.purple)
-                        Text("Markdown Preview")
-                            .font(.system(size: DesignTokens.Typography.Heading3.size, weight: DesignTokens.Typography.Heading3.weight))
-                        Spacer()
-                        Toggle("", isOn: $showPreview)
-                            .toggleStyle(.switch)
-                            .labelsHidden()
-                    }
-                    
-                    if showPreview {
-                        if let content = markdownContent {
-                            MarkdownPreviewView(content: content)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 400)
-                                .background(DesignTokens.Colors.Background.secondary)
-                                .cornerRadius(DesignTokens.Radius.md)
-                        } else {
-                            ProgressView("Loading...")
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 200)
-                        }
-                    }
-                }
-                .onAppear { loadMarkdownContent() }
-                .cardStyle()
-            }
-        }
-    }
-    
-    private var suggestedFixCard: some View {
-        Group {
-            if let fix = finding.suggestedFix {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "wrench.and.screwdriver.fill")
-                            .foregroundStyle(.green)
-                        Text("Suggested Fix")
-                            .font(.system(size: DesignTokens.Typography.Heading3.size, weight: DesignTokens.Typography.Heading3.weight))
-                    }
-                    
-                    Text(fix.description)
-                        .font(.system(size: DesignTokens.Typography.Body.size, weight: DesignTokens.Typography.Body.weight))
-                        .foregroundStyle(.secondary)
-                    
-                    if fix.automated {
-                        Button {
-                            applyFix(fix)
-                        } label: {
-                            Label("Apply Fix Automatically", systemImage: "wand.and.stars")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                    } else {
-                        Label("Manual fix required - open in editor", systemImage: "hand.point.up")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .cardStyle(tint: DesignTokens.Colors.Accent.blue)
-            }
-        }
-    }
-    
-    private var actionsCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "bolt.fill")
-                    .foregroundStyle(.orange)
-                Text("Actions")
-                    .font(.system(size: DesignTokens.Typography.Heading3.size, weight: DesignTokens.Typography.Heading3.weight))
-            }
+            Text(type.prefix)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(type.color)
             
-            VStack(spacing: 8) {
-                Menu {
-                    ForEach(EditorIntegration.installedEditors, id: \.self) { editor in
-                        Button {
-                            FindingActions.openInEditor(finding.fileURL, line: finding.line, editor: editor)
-                        } label: {
-                            Label(editor.rawValue, systemImage: editor.icon)
-                        }
-                    }
-                } label: {
-                    Label("Open in Editor", systemImage: "pencil")
-                        .frame(maxWidth: .infinity)
-                } primaryAction: {
-                    FindingActions.openInEditor(finding.fileURL, line: finding.line)
-                }
-                .buttonStyle(.customGlass)
-                .controlSize(.large)
-                
-                HStack(spacing: 8) {
-                    Button {
-                        FindingActions.showInFinder(finding.fileURL)
-                    } label: {
-                        Label("Show in Finder", systemImage: "folder")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.customGlass)
-                    
-                    Button {
-                        addToBaseline()
-                    } label: {
-                        Label("Add to Baseline", systemImage: "checkmark.circle")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.customGlassProminent)
-                }
-            }
+            Text(text)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(DesignTokens.Colors.Text.primary)
+                .lineLimit(1)
         }
-        .cardStyle(tint: DesignTokens.Colors.Accent.orange)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 1)
+        .background(type.background)
     }
 }

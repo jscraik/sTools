@@ -121,6 +121,11 @@ struct StatsView: View {
         }
         .background(DesignTokens.Colors.Background.primary)
     }
+
+}
+
+// MARK: - Subviews
+private extension StatsView {
     
     private func statCard(title: String, value: String, icon: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxxs) {

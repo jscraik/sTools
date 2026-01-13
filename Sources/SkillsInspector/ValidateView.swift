@@ -62,82 +62,142 @@ struct ValidateView: View {
             Task { await viewModel.clearCache() }
         }
     }
+}
 
+// MARK: - Subviews
+private extension ValidateView {
+    @ViewBuilder
     private var toolbar: some View {
         VStack(spacing: 0) {
-            // Main toolbar
-            HStack(spacing: DesignTokens.Spacing.xs) {
-                // Primary actions group
+            // Main Action Toolbar
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                // Primary Action Group
                 HStack(spacing: DesignTokens.Spacing.xxxs) {
-                    Button(viewModel.isScanning ? "Scanning…" : "Scan") {
+                    Button {
                         Task { await viewModel.scan() }
+                    } label: {
+                        HStack(spacing: DesignTokens.Spacing.xxxs) {
+                            if viewModel.isScanning {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "doc.text.magnifyingglass")
+                            }
+                            Text(viewModel.isScanning ? "Scanning…" : "Scan Rules")
+                                .fontWeight(.semibold)
+                        }
                     }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(viewModel.isScanning)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
+                    .help("Validate skill files against all rules (⌘R)")
                     
-                    Button("Cancel") { 
-                        viewModel.cancelScan() 
+                    if viewModel.isScanning {
+                        Button("Stop") { 
+                            viewModel.cancelScan() 
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.regular)
                     }
-                    .disabled(!viewModel.isScanning)
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
                 }
                 
                 Divider()
-                    .frame(height: 24)
+                    .frame(height: 28)
                 
-                // Watch mode toggle
-                HStack(spacing: DesignTokens.Spacing.xxxs) {
-                    Label("Watch Mode", systemImage: "eye")
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(viewModel.watchMode ? DesignTokens.Colors.Accent.green : DesignTokens.Colors.Icon.secondary)
-                    Toggle("", isOn: $viewModel.watchMode)
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
+                // Configuration Shortcuts
+                HStack(spacing: DesignTokens.Spacing.xs) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Watch Mode")
+                            .font(.system(.caption2, weight: .bold))
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            .textCase(.uppercase)
+                        
+                        Toggle("", isOn: $viewModel.watchMode)
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .labelsHidden()
+                            .help("Automatically re-scan when files change")
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Search")
+                            .font(.system(.caption2, weight: .bold))
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            .textCase(.uppercase)
+                        
+                        Button {
+                            viewModel.recursive.toggle()
+                        } label: {
+                            Label("Recursive", systemImage: viewModel.recursive ? "arrow.down.right.and.arrow.up.left.circle.fill" : "arrow.down.right.and.arrow.up.left.circle")
+                                .foregroundStyle(viewModel.recursive ? DesignTokens.Colors.Accent.blue : DesignTokens.Colors.Icon.tertiary)
+                                .font(.title3)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Recursive search: \(viewModel.recursive ? "On" : "Off")")
+                    }
                 }
-                .help("Automatically re-scan when files change")
                 
                 Spacer()
                 
-                // Progress and stats
-                if viewModel.isScanning {
-                    HStack(spacing: DesignTokens.Spacing.xxxs) {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                            .tint(DesignTokens.Colors.Accent.blue)
-                        if viewModel.totalFiles > 0 {
-                            Text("\(viewModel.filesScanned)/\(viewModel.totalFiles)")
-                                .font(.system(.caption, design: .monospaced))
+                // Dynamic Progress / Stats
+                HStack(spacing: DesignTokens.Spacing.xs) {
+                    if viewModel.isScanning {
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text("SCANNING")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            if viewModel.totalFiles > 0 {
+                                Text("\(viewModel.filesScanned) / \(viewModel.totalFiles)")
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(DesignTokens.Colors.Accent.blue)
+                            } else {
+                                Text("Starting…")
+                                    .font(.system(.subheadline, weight: .bold))
+                                    .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                            }
+                        }
+                        .padding(.horizontal, DesignTokens.Spacing.xxs)
+                        .padding(.vertical, 4)
+                        .background(DesignTokens.Colors.Accent.blue.opacity(0.1))
+                        .cornerRadius(DesignTokens.Radius.sm)
+                    } else if let lastScanAt = viewModel.lastScanAt {
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text("LAST RUN")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            Text(lastScanAt.formatted(date: .omitted, time: .shortened))
+                                .font(.system(.subheadline, design: .monospaced))
+                                .fontWeight(.bold)
                                 .foregroundStyle(DesignTokens.Colors.Text.secondary)
                         }
                     }
-                    .padding(.horizontal, DesignTokens.Spacing.xxxs)
-                    .padding(.vertical, DesignTokens.Spacing.hair)
-                    .background(DesignTokens.Colors.Accent.blue.opacity(0.1))
-                    .cornerRadius(DesignTokens.Radius.sm)
-                }
-                
-                // Cache stats
-                if viewModel.cacheHits > 0 && viewModel.filesScanned > 0 {
-                    let hitRate = Int(Double(viewModel.cacheHits) / Double(viewModel.filesScanned) * 100)
-                    HStack(spacing: DesignTokens.Spacing.hair) {
-                        Image(systemName: "bolt.fill")
-                            .foregroundStyle(DesignTokens.Colors.Accent.green)
-                            .font(.caption2)
-                        Text("\(hitRate)%")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
+
+                    if viewModel.cacheHits > 0 && viewModel.filesScanned > 0 {
+                        let hitRate = Int(Double(viewModel.cacheHits) / Double(viewModel.filesScanned) * 100)
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text("CACHE")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            Text("\(hitRate)%")
+                                .font(.system(.subheadline, design: .monospaced))
+                                .fontWeight(.bold)
+                                .foregroundStyle(DesignTokens.Colors.Accent.green)
+                        }
+                        .padding(.horizontal, DesignTokens.Spacing.xxs)
+                        .padding(.vertical, 4)
+                        .background(DesignTokens.Colors.Accent.green.opacity(0.1))
+                        .cornerRadius(DesignTokens.Radius.sm)
+                        .help("Cache hit rate: \(hitRate)%")
                     }
-                    .padding(.horizontal, DesignTokens.Spacing.xxxs)
-                    .padding(.vertical, DesignTokens.Spacing.hair)
-                    .background(DesignTokens.Colors.Accent.green.opacity(0.1))
-                    .cornerRadius(DesignTokens.Radius.sm)
-                    .help("Cache hit rate: \(hitRate)%")
                 }
                 
-                // Export button
+                Divider()
+                    .frame(height: 28)
+
+                // Global Export
                 Menu {
                     ForEach(ExportFormat.allCases, id: \.self) { format in
                         Button {
@@ -148,55 +208,64 @@ struct ValidateView: View {
                         }
                     }
                 } label: {
-                    Label("Export", systemImage: "square.and.arrow.up")
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.title3)
                 }
                 .disabled(viewModel.findings.isEmpty)
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
+                .buttonStyle(.plain)
                 .help("Export validation results")
             }
-            .padding(.horizontal, DesignTokens.Spacing.xs)
-            .padding(.vertical, DesignTokens.Spacing.xxs)
+            .padding(.horizontal, DesignTokens.Spacing.sm)
+            .padding(.vertical, DesignTokens.Spacing.xs)
             .background(glassBarStyle(cornerRadius: 0))
             
-            // Stats summary bar
-            if !viewModel.findings.isEmpty || viewModel.filesScanned > 0 {
-                HStack(spacing: DesignTokens.Spacing.xs) {
-                    // Severity badges
-                    let errors = viewModel.findings.filter { $0.severity == .error }.count
-                    let warnings = viewModel.findings.filter { $0.severity == .warning }.count
-                    let infos = viewModel.findings.filter { $0.severity == .info }.count
-                    
-                    severityBadge(count: errors, severity: .error, isActive: severityFilter == .error)
-                    severityBadge(count: warnings, severity: .warning, isActive: severityFilter == .warning)
-                    severityBadge(count: infos, severity: .info, isActive: severityFilter == .info)
-                    
+            Divider()
+
+            // Severity Filtering Bar
+            if !viewModel.findings.isEmpty || viewModel.isScanning {
+                HStack(spacing: DesignTokens.Spacing.sm) {
+                    HStack(spacing: DesignTokens.Spacing.xs) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                        
+                        let errors = viewModel.findings.filter { $0.severity == .error }.count
+                        let warnings = viewModel.findings.filter { $0.severity == .warning }.count
+                        let infos = viewModel.findings.filter { $0.severity == .info }.count
+                        
+                        severityBadge(count: errors, severity: .error, isActive: severityFilter == .error)
+                        severityBadge(count: warnings, severity: .warning, isActive: severityFilter == .warning)
+                        severityBadge(count: infos, severity: .info, isActive: severityFilter == .info)
+                    }
+
                     Spacer()
-                    
-                    // Scan timing
+
                     if let duration = viewModel.lastScanDuration {
-                        HStack(spacing: DesignTokens.Spacing.hair) {
-                            Image(systemName: "clock")
-                                .font(.caption2)
+                        HStack(spacing: DesignTokens.Spacing.xxxs) {
+                            Image(systemName: "timer")
                             Text(String(format: "%.2fs", duration))
-                                .font(.system(.caption, design: .monospaced))
                         }
+                        .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(DesignTokens.Colors.Text.tertiary)
                     }
-                    
-                    if let lastScan = viewModel.lastScanAt {
-                        Text(lastScan.formatted(date: .omitted, time: .shortened))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
-                    }
                 }
-                .padding(.horizontal, DesignTokens.Spacing.xs)
-                .padding(.vertical, DesignTokens.Spacing.xxxs)
-                .background(DesignTokens.Colors.Background.secondary.opacity(0.5))
+                .padding(.horizontal, DesignTokens.Spacing.sm)
+                .padding(.vertical, 6)
+                .background(DesignTokens.Colors.Background.tertiary.opacity(0.3))
+                
+                Divider()
             }
         }
+        // Auto-scan on critical setting changes (Debounced)
+        .task(id: viewModel.recursive) { 
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            await autoScanIfReady() 
+        }
+        .task(id: viewModel.effectiveExcludes) { 
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            await autoScanIfReady() 
+        }
     }
-    
+
     private func severityBadge(count: Int, severity: Severity, isActive: Bool) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -239,70 +308,115 @@ struct ValidateView: View {
         .help("\(severity.rawValue.capitalized): \(count) findings")
     }
 
+    @ViewBuilder
     private var content: some View {
         let filtered = filteredFindings(viewModel.findings)
-        
-        return HStack(spacing: 0) {
-            // Findings list panel (fixed width, non-resizable)
-            Group {
+        HStack(spacing: 0) {
+            // Left Pane: Findings List
+            VStack(spacing: 0) {
+                // Scanning Progress Indicator
+                if viewModel.isScanning {
+                    ProgressView(value: viewModel.scanProgress)
+                        .progressViewStyle(.linear)
+                        .frame(height: 2)
+                        .tint(DesignTokens.Colors.Accent.blue)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 if viewModel.isScanning && viewModel.findings.isEmpty {
-                    // Loading state with skeletons
                     List {
-                        ForEach(0..<5, id: \.self) { _ in
+                        ForEach(0..<6, id: \.self) { _ in
                             SkeletonFindingRow()
-                                .listRowBackground(glassPanelStyle(cornerRadius: 12, tint: Color.primary.opacity(0.05)))
-                                .listRowInsets(EdgeInsets())
+                                .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                                .listRowSeparator(.hidden)
                         }
                     }
-                    .listStyle(.inset)
-                } else if viewModel.findings.isEmpty && viewModel.lastScanAt != nil {
-                    // Empty state after scan
-                    EmptyStateView(
-                        icon: "checkmark.circle",
-                        title: "No Issues Found",
-                        message: "All skill files pass validation.",
-                        action: { Task { await viewModel.scan() } },
-                        actionLabel: "Scan Again"
-                    )
+                    .listStyle(.plain)
                 } else if viewModel.findings.isEmpty {
-                    // Initial state
-                    EmptyStateView(
-                        icon: "doc.text.magnifyingglass",
-                        title: "Ready to Scan",
-                        message: "Press Scan or ⌘R to validate skill files.",
-                        action: { Task { await viewModel.scan() } },
-                        actionLabel: "Scan Now"
-                    )
+                    VStack(spacing: DesignTokens.Spacing.sm) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 48))
+                            .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+                        
+                        VStack(spacing: DesignTokens.Spacing.xxxs) {
+                            Text("No findings yet")
+                                .font(.headline)
+                            Text("Run a scan to validate your skills")
+                                .font(.subheadline)
+                                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                        }
+                        
+                        Button("Start Scan") {
+                            Task { await viewModel.scan() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if filtered.isEmpty {
-                    // Filter produced no results
-                    EmptyStateView(
-                        icon: "line.3.horizontal.decrease.circle",
-                        title: "No Matching Findings",
-                        message: "Try adjusting your filters or search query."
-                    )
+                    VStack(spacing: DesignTokens.Spacing.sm) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 32))
+                            .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+                        Text("No results match your filters")
+                            .font(.subheadline)
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                        Button("Clear Filters") {
+                            severityFilter = nil
+                            agentFilter = nil
+                            searchText = ""
+                        }
+                        .buttonStyle(.link)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    // Normal list
-                    findingsList(filtered)
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
-                        .background(glassPanelStyle(cornerRadius: 0, tint: Color.primary.opacity(0.04)))
+                    VStack(spacing: 0) {
+                        let autoFixableCount = viewModel.findings.filter { $0.suggestedFix?.automated == true }.count
+                        if autoFixableCount > 1 {
+                            Button {
+                                fixAllAutomated()
+                            } label: {
+                                Label("Apply \(autoFixableCount) Auto-Fixes", systemImage: "wand.and.stars.inverse")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.customGlassProminent)
+                            .tint(DesignTokens.Colors.Accent.green)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(DesignTokens.Colors.Accent.green.opacity(0.05))
+                            .transition(.move(edge: .top))
+                        }
+                        
+                        findingsList(filtered)
+                    }
                 }
             }
-            .frame(minWidth: 280, idealWidth: 340, maxWidth: 440)
-            .animation(.easeInOut(duration: 0.2), value: viewModel.findings.count)
-            .animation(.easeInOut(duration: 0.2), value: filtered.count)
+            .frame(minWidth: 320, idealWidth: 380, maxWidth: 460)
+            .background(DesignTokens.Colors.Background.secondary.opacity(0.15))
             
             Divider()
             
-            // Detail panel (flexible)
-            Group {
+            // Right Pane: Detail View
+            ZStack {
                 if let finding = selectedFinding {
                     FindingDetailView(finding: finding)
+                        .id(finding.id) // Force refresh on selection change
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
                 } else {
-                    emptyDetailState
+                    VStack(spacing: DesignTokens.Spacing.xs) {
+                        Image(systemName: "sidebar.right")
+                            .font(.system(size: 40))
+                            .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+                        Text("Select a finding to details")
+                            .font(.headline)
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(DesignTokens.Colors.Background.primary)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selectedFinding?.id)
         }
     }
     
@@ -325,8 +439,8 @@ struct ValidateView: View {
         List(findings, selection: $selectedFinding) { finding in
             FindingRowView(finding: finding)
                 .tag(finding)
-                .listRowBackground(glassPanelStyle(cornerRadius: 12, tint: finding.severity.color.opacity(0.08)))
-                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
                 .contextMenu {
                     contextMenuItems(for: finding)
                 }
@@ -335,18 +449,10 @@ struct ValidateView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .listRowSeparator(.hidden)
-        .background(glassPanelStyle(cornerRadius: 10, tint: DesignTokens.Colors.Accent.blue.opacity(0.03)))
         .accessibilityLabel("Findings list")
         .onAppear {
-            // Auto-select first finding if none selected
             if selectedFinding == nil && !findings.isEmpty {
                 selectedFinding = findings.first
-            }
-        }
-        .onChange(of: findings) { _, newFindings in
-            // Clear selection if current finding no longer exists
-            if let current = selectedFinding, !newFindings.contains(where: { $0.id == current.id }) {
-                selectedFinding = newFindings.first
             }
         }
         .onKeyPress(.upArrow) {
@@ -407,14 +513,20 @@ struct ValidateView: View {
             FindingActions.copyToClipboard(finding.message)
         }
     }
-    
+}
+
+// MARK: - Actions
+private extension ValidateView {
+    private func autoScanIfReady() async {
+        guard !viewModel.isScanning else { return }
+        await viewModel.scan()
+    }
+
     private func addToBaseline(_ finding: Finding) {
-        // Determine baseline URL (prefer repo root if available)
         let baselineURL: URL
         if let repoRoot = findRepoRoot(from: finding.fileURL) {
             baselineURL = repoRoot.appendingPathComponent(".skillsctl/baseline.json")
         } else {
-            // Fall back to home directory
             let home = FileManager.default.homeDirectoryForCurrentUser
             baselineURL = home.appendingPathComponent(".skillsctl/baseline.json")
         }
@@ -422,17 +534,36 @@ struct ValidateView: View {
         do {
             try FindingActions.addToBaseline(finding, baselineURL: baselineURL)
             toastMessage = ToastMessage(style: .success, message: "Added to baseline")
-            
-            // Refresh the scan to apply the new baseline
             Task {
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s delay
+                try? await Task.sleep(nanoseconds: 500_000_000)
                 await viewModel.scan()
             }
         } catch {
-            toastMessage = ToastMessage(style: .error, message: "Failed to add to baseline: \(error.localizedDescription)")
+            toastMessage = ToastMessage(style: .error, message: "Failed to add to baseline")
         }
     }
-    
+
+    private func fixAllAutomated() {
+        let autoFixes = viewModel.findings.compactMap { $0.suggestedFix }.filter { $0.automated }
+        guard !autoFixes.isEmpty else { return }
+        
+        var successCount = 0
+        for fix in autoFixes {
+            if case .success = FixEngine.applyFix(fix) {
+                successCount += 1
+            }
+        }
+        
+        toastMessage = ToastMessage(style: .success, message: "Applied \(successCount) fixes successfully! Re-scanning...")
+        Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            await viewModel.scan()
+        }
+    }
+}
+
+// MARK: - Helpers
+private extension ValidateView {
     private func findRepoRoot(from url: URL) -> URL? {
         var current = url.deletingLastPathComponent()
         while current.path != "/" {
@@ -455,9 +586,5 @@ struct ValidateView: View {
             }
             return true
         }
-    }
-
-    private func color(for severity: Severity) -> Color {
-        severity.color
     }
 }

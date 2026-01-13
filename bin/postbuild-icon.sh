@@ -5,15 +5,21 @@ set -euo pipefail
 # Usage: bin/postbuild-icon.sh [.build/release/sTools.app]
 
 APP_PATH="${1:-.build/release/sTools.app}"
-ICON_SRC="Icon.icns"
+ICON_SRC_ROOT="Icon.icns"
+ICON_SRC_RES="Sources/SkillsInspector/Resources/Icon.icns"
+ICON_SRC=""
 
 if [[ ! -d "$APP_PATH" ]]; then
   echo "App bundle not found at: $APP_PATH" >&2
   exit 1
 fi
 
-if [[ ! -f "$ICON_SRC" ]]; then
-  echo "Icon source not found at: $ICON_SRC" >&2
+if [[ -f "$ICON_SRC_RES" ]]; then
+  ICON_SRC="$ICON_SRC_RES"
+elif [[ -f "$ICON_SRC_ROOT" ]]; then
+  ICON_SRC="$ICON_SRC_ROOT"
+else
+  echo "Icon source not found in repo root or Resources." >&2
   exit 1
 fi
 

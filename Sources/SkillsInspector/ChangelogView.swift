@@ -2,176 +2,222 @@ import SwiftUI
 import SkillsCore
 
 struct ChangelogView: View {
-    @ObservedObject var viewModel: IndexViewModel
-    @State private var changelogPath: URL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".codex/skills/Skills-Changelog.md")
-    @State private var statusMessage: String?
+    @ObservedObject var viewModel: ChangelogViewModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            content
+        ZStack {
+            DesignTokens.Colors.Background.secondary.opacity(0.1).ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                premiumHeader
+                
+                ScrollView {
+                    VStack(spacing: DesignTokens.Spacing.md) {
+                        if viewModel.generatedMarkdown.isEmpty {
+                            emptyState
+                        } else {
+                            changelogPreviewCard
+                        }
+                        
+                        ledgerTimelineSection
+                    }
+                    .padding(DesignTokens.Spacing.md)
+                }
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .task {
+            await viewModel.refreshEvents()
+        }
     }
 
-    private var header: some View {
+    private var premiumHeader: some View {
         VStack(spacing: 0) {
-            // Main header
-            HStack(spacing: DesignTokens.Spacing.xs) {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair) {
-                    Text("Changelog")
-                        .heading2()
-                    Text("App Store release notes and version history")
-                        .bodySmall()
-                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Release Management")
+                        .font(.system(size: 14, weight: .black))
+                    Text("Generate App Store assets from local history")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DesignTokens.Colors.Text.tertiary)
                 }
                 
                 Spacer()
                 
-                // Action buttons
                 HStack(spacing: DesignTokens.Spacing.xxxs) {
                     Button {
-                        loadChangelog()
+                        openChangelog()
                     } label: {
-                        Label("Open…", systemImage: "folder")
+                        Label("Import", systemImage: "square.and.arrow.down")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-                    .help("Open existing changelog file")
-
-                    Button {
-                        saveChangelog()
-                    } label: {
-                        Label("Save", systemImage: "square.and.arrow.down")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
-                    .disabled(viewModel.generatedMarkdown.isEmpty)
-                    .help("Save changelog to file")
-                }
-            }
-            .padding(.horizontal, DesignTokens.Spacing.xs)
-            .padding(.vertical, DesignTokens.Spacing.xxs)
-            .background(glassBarStyle(cornerRadius: 0))
-            
-            // Status bar
-            if let path = viewModel.changelogPath {
-                HStack(spacing: DesignTokens.Spacing.xxxs) {
-                    Image(systemName: "doc.text")
-                        .font(.caption2)
-                        .foregroundStyle(DesignTokens.Colors.Icon.secondary)
-                    Text("Saved at: \(path.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~"))")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                    Spacer()
+                    .buttonStyle(.customGlass)
                     
-                    if let statusMessage {
-                        HStack(spacing: DesignTokens.Spacing.hair) {
-                            Image(systemName: statusMessage.contains("failed") ? "exclamationmark.triangle" : "checkmark.circle")
-                                .font(.caption2)
-                                .foregroundStyle(statusMessage.contains("failed") ? DesignTokens.Colors.Status.error : DesignTokens.Colors.Status.success)
-                            Text(statusMessage)
-                                .font(.caption)
+                    Button {
+                        Task { await viewModel.generateChangelog() }
+                    } label: {
+                        HStack {
+                            if viewModel.isLoading {
+                                ProgressView().scaleEffect(0.5)
+                            } else {
+                                Image(systemName: "wand.and.stars")
+                            }
+                            Text("Generate")
                         }
-                        .padding(.horizontal, DesignTokens.Spacing.xxxs)
-                        .padding(.vertical, DesignTokens.Spacing.hair)
-                        .background(
-                            (statusMessage.contains("failed") ? DesignTokens.Colors.Status.error : DesignTokens.Colors.Status.success)
-                                .opacity(0.1)
-                        )
-                        .cornerRadius(DesignTokens.Radius.sm)
+                        .fontWeight(.bold)
+                    }
+                    .buttonStyle(.customGlassProminent)
+                    .tint(DesignTokens.Colors.Accent.blue)
+                    .disabled(viewModel.isLoading)
+                }
+            }
+            .padding(.horizontal, DesignTokens.Spacing.sm)
+            .padding(.vertical, DesignTokens.Spacing.xs)
+            .background(DesignTokens.Colors.Background.primary.opacity(0.8))
+            
+            if let path = viewModel.changelogPath {
+                HStack {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 10))
+                    Text(path.lastPathComponent)
+                        .font(.system(size: 10, design: .monospaced))
+                    Spacer()
+                    if let message = viewModel.statusMessage {
+                        Text(message)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(DesignTokens.Colors.Accent.green)
                     }
                 }
-                .padding(.horizontal, DesignTokens.Spacing.xs)
-                .padding(.vertical, DesignTokens.Spacing.xxxs)
-                .background(DesignTokens.Colors.Background.secondary.opacity(0.5))
+                .padding(.horizontal, DesignTokens.Spacing.sm)
+                .padding(.vertical, 4)
+                .background(DesignTokens.Colors.Background.tertiary.opacity(0.4))
+                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
             }
+            
+            Divider()
         }
     }
 
-    private var content: some View {
-        Group {
-            if viewModel.generatedMarkdown.isEmpty {
-                EmptyStateView(
-                    icon: "doc.text",
-                    title: "No Changelog Generated",
-                    message: "Generate an index first to create changelog content. The changelog will show version history and release notes for App Store submissions.",
-                    action: nil,
-                    actionLabel: ""
+    private var emptyState: some View {
+        VStack(spacing: DesignTokens.Spacing.sm) {
+            Image(systemName: "doc.text.badge.plus")
+                .font(.system(size: 48))
+                .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+                .symbolEffect(.bounce, options: .nonRepeating, value: viewModel.isGenerating)
+            
+            VStack(spacing: 4) {
+                Text("No Release Notes Generated")
+                    .font(.headline)
+                Text("Analyze your local skill ledger to automatically produce release notes for your next deployment.")
+                    .font(.subheadline)
+                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
+            }
+            
+            Button {
+                Task { await viewModel.generateChangelog() }
+            } label: {
+                Text("Analyze Ledger History")
+                    .fontWeight(.bold)
+            }
+            .buttonStyle(.customGlassProminent)
+            .tint(DesignTokens.Colors.Accent.blue)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+        .background(DesignTokens.Colors.Background.secondary.opacity(0.3))
+        .cornerRadius(DesignTokens.Radius.lg)
+    }
+
+    private var changelogPreviewCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
+            HStack {
+                Label("PROPOSED RELEASE NOTES", systemImage: "text.quote")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                
+                Spacer()
+                
+                HStack(spacing: DesignTokens.Spacing.xxxs) {
+                    Button {
+                        viewModel.saveChangelog()
+                    } label: {
+                        Label("Save File", systemImage: "checkmark.circle.fill")
+                    }
+                    .buttonStyle(.customGlass)
+                    .foregroundStyle(DesignTokens.Colors.Status.success)
+                    
+                    Button {
+                        copyToClipboard()
+                    } label: {
+                        Image(systemName: "doc.on.doc.fill")
+                    }
+                    .buttonStyle(.customGlass)
+                    .help("Copy to clipboard")
+                }
+            }
+            
+            MarkdownPreviewView(content: viewModel.generatedMarkdown)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(DesignTokens.Spacing.sm)
+                .background(DesignTokens.Colors.Background.primary)
+                .cornerRadius(DesignTokens.Radius.md)
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                        .stroke(DesignTokens.Colors.Border.light, lineWidth: 1)
                 )
-                .padding(DesignTokens.Spacing.xl)
+        }
+        .padding(DesignTokens.Spacing.sm)
+        .background(DesignTokens.Colors.Background.secondary.opacity(0.4))
+        .cornerRadius(DesignTokens.Radius.lg)
+    }
+
+    private var ledgerTimelineSection: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
+            HStack {
+                Label("LOCAL LEDGER TIMELINE", systemImage: "clock.arrow.2.circlepath")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                
+                Spacer()
+                
+                Button {
+                    Task { await viewModel.refreshEvents() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+            }
+            
+            if viewModel.events.isEmpty {
+                Text("No activity recorded in the skill ledger.")
+                    .font(.caption)
+                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
             } else {
                 VStack(spacing: 0) {
-                    // Changelog content with improved styling
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
-                            // Changelog header
-                            HStack {
-                                VStack(alignment: .leading, spacing: DesignTokens.Spacing.hair) {
-                                    Text("App Store Changelog")
-                                        .heading3()
-                                    Text("Generated from skill index")
-                                        .captionText()
-                                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
-                                }
-                                Spacer()
-                                
-                                // Copy button
-                                Button {
-                                    #if os(macOS)
-                                    NSPasteboard.general.clearContents()
-                                    NSPasteboard.general.setString(changelogPreview, forType: .string)
-                                    statusMessage = "Copied to clipboard"
-                                    #endif
-                                } label: {
-                                    Label("Copy", systemImage: "doc.on.doc")
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .help("Copy changelog to clipboard")
-                            }
-                            .padding(.horizontal, DesignTokens.Spacing.xs)
-                            .padding(.vertical, DesignTokens.Spacing.xxs)
-                            .background(glassBarStyle(cornerRadius: DesignTokens.Radius.lg))
-                            
-                            // Markdown preview with enhanced styling
-                            MarkdownPreviewView(content: changelogPreview)
-                                .padding(DesignTokens.Spacing.xs)
-                                .background(
-                                    glassPanelStyle(cornerRadius: DesignTokens.Radius.lg, tint: DesignTokens.Colors.Accent.blue.opacity(0.03))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: DesignTokens.Radius.lg, style: .continuous)
-                                        .stroke(DesignTokens.Colors.Border.light, lineWidth: 0.5)
-                                )
-                        }
-                        .padding(DesignTokens.Spacing.xs)
+                    ForEach(Array(viewModel.events.enumerated()), id: \.offset) { index, event in
+                        LedgerEventRowView(event: event, isLast: index == viewModel.events.count - 1)
                     }
                 }
+                .padding(DesignTokens.Spacing.sm)
+                .background(DesignTokens.Colors.Background.secondary.opacity(0.3))
+                .cornerRadius(DesignTokens.Radius.md)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var changelogPreview: String {
-        let lines = viewModel.generatedMarkdown.split(separator: "\n", omittingEmptySubsequences: false)
-        if let start = lines.firstIndex(where: { $0 == "## Changelog" }) {
-            return lines[start...].joined(separator: "\n")
-        }
-        return "## Changelog\n(No entries yet.)"
+    private func copyToClipboard() {
+        #if os(macOS)
+        let pasteboard = NSPasteboard.general
+        pasteboard.declareTypes([.string], owner: nil)
+        pasteboard.setString(viewModel.generatedMarkdown, forType: .string)
+        viewModel.statusMessage = "Copied text to clipboard"
+        #endif
     }
 
-    private func saveChangelog() {
-        do {
-            try changelogPreview.write(to: changelogPath, atomically: true, encoding: .utf8)
-            statusMessage = "Saved to \(changelogPath.lastPathComponent)"
-        } catch {
-            statusMessage = "Save failed: \(error.localizedDescription)"
-        }
-    }
-
-    private func loadChangelog() {
+    private func openChangelog() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -179,14 +225,12 @@ struct ChangelogView: View {
         panel.allowsMultipleSelection = false
         panel.prompt = "Open"
         panel.title = "Open Changelog"
-        if panel.runModal() == .OK, let url = panel.url, let data = try? String(contentsOf: url, encoding: .utf8) {
-            changelogPath = url
-            viewModel.generatedMarkdown = data
-            statusMessage = "Loaded \(url.lastPathComponent)"
+        if panel.runModal() == .OK, let url = panel.url {
+            viewModel.loadChangelog(from: url)
         }
     }
 }
 
 #Preview {
-    ChangelogView(viewModel: IndexViewModel())
+    ChangelogView(viewModel: ChangelogViewModel(ledger: nil))
 }

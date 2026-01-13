@@ -5,6 +5,8 @@ public struct RemoteSkillClient: Sendable {
     public var fetchLatest: @Sendable (_ limit: Int) async throws -> [RemoteSkill]
     public var search: @Sendable (_ query: String, _ limit: Int) async throws -> [RemoteSkill]
     public var download: @Sendable (_ slug: String, _ version: String?) async throws -> URL
+    public var fetchManifest: @Sendable (_ slug: String, _ version: String?) async throws -> RemoteArtifactManifest?
+    public var fetchPreview: @Sendable (_ slug: String, _ version: String?) async throws -> RemoteSkillPreview?
     public var fetchDetail: @Sendable (_ slug: String) async throws -> RemoteSkillOwner?
     public var fetchLatestVersion: @Sendable (_ slug: String) async throws -> String?
     public var fetchLatestVersionInfo: @Sendable (_ slug: String) async throws -> (version: String?, changelog: String?)
@@ -13,6 +15,8 @@ public struct RemoteSkillClient: Sendable {
         fetchLatest: @Sendable @escaping (_ limit: Int) async throws -> [RemoteSkill],
         search: @Sendable @escaping (_ query: String, _ limit: Int) async throws -> [RemoteSkill],
         download: @Sendable @escaping (_ slug: String, _ version: String?) async throws -> URL,
+        fetchManifest: @Sendable @escaping (_ slug: String, _ version: String?) async throws -> RemoteArtifactManifest?,
+        fetchPreview: @Sendable @escaping (_ slug: String, _ version: String?) async throws -> RemoteSkillPreview?,
         fetchDetail: @Sendable @escaping (_ slug: String) async throws -> RemoteSkillOwner?,
         fetchLatestVersion: @Sendable @escaping (_ slug: String) async throws -> String?,
         fetchLatestVersionInfo: @Sendable @escaping (_ slug: String) async throws -> (version: String?, changelog: String?)
@@ -20,6 +24,8 @@ public struct RemoteSkillClient: Sendable {
         self.fetchLatest = fetchLatest
         self.search = search
         self.download = download
+        self.fetchManifest = fetchManifest
+        self.fetchPreview = fetchPreview
         self.fetchDetail = fetchDetail
         self.fetchLatestVersion = fetchLatestVersion
         self.fetchLatestVersionInfo = fetchLatestVersionInfo
@@ -74,6 +80,47 @@ public extension RemoteSkillClient {
                 try validate(response: response)
                 return downloadURL
             },
+            fetchManifest: { slug, version in
+                var components = URLComponents(url: baseURL.appendingPathComponent("/api/v1/skills").appendingPathComponent(slug).appendingPathComponent("manifest"), resolvingAgainstBaseURL: false)
+                if let version, !version.isEmpty {
+                    components?.queryItems = [URLQueryItem(name: "version", value: version)]
+                }
+                guard let url = components?.url else { throw URLError(.badURL) }
+                do {
+                    let (data, response) = try await session.data(from: url)
+                    try validate(response: response)
+                    return try decoder.decode(RemoteArtifactManifest.self, from: data)
+                } catch let error as URLError where error.code == .fileDoesNotExist {
+                    return nil
+                } catch {
+                    if case RemoteSkillClientError.notFound = error { return nil }
+                    throw error
+                }
+            },
+            fetchPreview: { slug, version in
+                var components = URLComponents(url: baseURL.appendingPathComponent("/api/v1/skills").appendingPathComponent(slug).appendingPathComponent("preview"), resolvingAgainstBaseURL: false)
+                if let version, !version.isEmpty {
+                    components?.queryItems = [URLQueryItem(name: "version", value: version)]
+                }
+                guard let url = components?.url else { throw URLError(.badURL) }
+                let (data, response) = try await session.data(from: url)
+                if let http = response as? HTTPURLResponse, http.statusCode == 404 {
+                    return nil
+                }
+                try validate(response: response)
+                let decoded = try decoder.decode(RemoteSkillPreviewResponse.self, from: data)
+                let etag = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "ETag")
+                return RemoteSkillPreview(
+                    slug: slug,
+                    version: decoded.version ?? version,
+                    skillMarkdown: decoded.skillMarkdown,
+                    changelog: decoded.changelog,
+                    signerKeyId: decoded.signerKeyId,
+                    manifest: decoded.manifest,
+                    etag: etag,
+                    fetchedAt: Date()
+                )
+            },
             fetchDetail: { slug in
                 var components = URLComponents(url: baseURL.appendingPathComponent("/api/skill"), resolvingAgainstBaseURL: false)
                 components?.queryItems = [URLQueryItem(name: "slug", value: slug)]
@@ -114,6 +161,21 @@ public extension RemoteSkillClient {
             },
             download: { _, _ in
                 FileManager.default.temporaryDirectory
+            },
+            fetchManifest: { _, _ in
+                RemoteArtifactManifest(sha256: String(repeating: "a", count: 64), size: 1024, signature: "mock", signerKeyId: "dev-key", trustedSigners: ["dev-key"], revokedKeys: nil, targets: [.codex, .claude, .copilot], builtWith: nil)
+            },
+            fetchPreview: { slug, version in
+                RemoteSkillPreview(
+                    slug: slug,
+                    version: version ?? "1.0.0",
+                    skillMarkdown: "# \(slug)\n\nPreview content for \(slug).",
+                    changelog: "Changes in \(version ?? "1.0.0"):\n- Example change",
+                    signerKeyId: "dev-key",
+                    manifest: RemoteArtifactManifest(sha256: String(repeating: "a", count: 64), size: 1024, signature: "mock", signerKeyId: "dev-key", trustedSigners: ["dev-key"], revokedKeys: nil, targets: [.codex, .claude, .copilot], builtWith: nil),
+                    etag: "mock-etag",
+                    fetchedAt: Date()
+                )
             },
             fetchDetail: { slug in
                 RemoteSkillOwner(handle: "@\(slug)", displayName: "Owner \(slug)", imageURL: nil)
@@ -195,6 +257,14 @@ private struct SkillSummary: Decodable {
 
 private struct Owner: Decodable { let handle: String?; let displayName: String?; let image: String? }
 
+private struct RemoteSkillPreviewResponse: Decodable {
+    let skillMarkdown: String?
+    let changelog: String?
+    let version: String?
+    let signerKeyId: String?
+    let manifest: RemoteArtifactManifest?
+}
+
 // MARK: - Mappers
 
 private extension RemoteSkill {
@@ -232,6 +302,9 @@ private extension RemoteSkill {
 
 private func validate(response: URLResponse) throws {
     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        if let http = response as? HTTPURLResponse, http.statusCode == 404 {
+            throw RemoteSkillClientError.notFound
+        }
         throw URLError(.badServerResponse)
     }
 }

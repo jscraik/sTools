@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "cLog",
     platforms: [
-        .macOS(.v26)
+        .macOS(.v14)
     ],
     products: [
         .library(name: "SkillsCore", targets: ["SkillsCore"]),
@@ -15,12 +15,15 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.4.1"),
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.0.0")
     ],
     targets: [
         .target(
             name: "SkillsCore",
-            dependencies: []
+            dependencies: [],
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
         ),
         .executableTarget(
             name: "skillsctl",
@@ -35,6 +38,9 @@ let package = Package(
                 "SkillsCore",
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
                 .product(name: "Sparkle", package: "Sparkle")
+            ],
+            resources: [
+                .process("Resources/Icon.icns")
             ],
             swiftSettings: [
                 .unsafeFlags(["-default-isolation", "MainActor"]),

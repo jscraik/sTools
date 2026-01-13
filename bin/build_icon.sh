@@ -8,7 +8,7 @@ cd "$ROOT"
 # Generate the base PNG if it doesn't exist or if regenerating
 if [[ ! -f "Icon.png" ]] || [[ "${1:-}" == "--regenerate" ]]; then
   echo "Generating Icon.png..."
-  swift Scripts/generate_icon.swift
+  swift bin/generate_icon.swift
 fi
 
 if [[ ! -f "Icon.png" ]]; then
@@ -35,6 +35,12 @@ cp Icon.png "$ICONSET_DIR/icon_512x512@2x.png"
 iconutil -c icns "$ICONSET_DIR" -o Icon.icns
 
 echo "Icon.icns generated at $ROOT/Icon.icns"
+
+RESOURCE_ICON="$ROOT/Sources/SkillsInspector/Resources/Icon.icns"
+if [[ -d "$(dirname "$RESOURCE_ICON")" ]]; then
+  cp "$ROOT/Icon.icns" "$RESOURCE_ICON"
+  echo "Icon.icns copied to $RESOURCE_ICON"
+fi
 
 # Cleanup
 rm -rf "$ICONSET_DIR"

@@ -7,7 +7,15 @@ set -euo pipefail
 BIN_SRC="${1:-.build/release/sTools}"
 TARGET_APP="${2:-.build/release/sTools.app}"
 TEMPLATE_APP="Template.app"
-ICON_SRC="Icon.icns"
+ICON_SRC_ROOT="Icon.icns"
+ICON_SRC_RES="Sources/SkillsInspector/Resources/Icon.icns"
+ICON_SRC=""
+
+if [[ -f "$ICON_SRC_RES" ]]; then
+  ICON_SRC="$ICON_SRC_RES"
+elif [[ -f "$ICON_SRC_ROOT" ]]; then
+  ICON_SRC="$ICON_SRC_ROOT"
+fi
 
 if [[ ! -f "$BIN_SRC" ]]; then
   echo "Binary not found at: $BIN_SRC" >&2
@@ -40,10 +48,12 @@ if [[ -d "$BUILD_DIR/Sparkle.framework" ]]; then
     install_name_tool -add_rpath "@executable_path/../Frameworks" "$TARGET_APP/Contents/MacOS/sTools" || true
 fi
 
-if [[ -f "$ICON_SRC" ]]; then
+if [[ -n "$ICON_SRC" ]]; then
   cp "$ICON_SRC" "$TARGET_APP/Contents/Resources/Icon.icns"
   /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile Icon" "$TARGET_APP/Contents/Info.plist" 2>/dev/null \
     || /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string Icon" "$TARGET_APP/Contents/Info.plist"
+else
+  echo "Warning: Icon.icns not found in repo root or Resources; app will use default icon." >&2
 fi
 
 echo "Staged app at $TARGET_APP"

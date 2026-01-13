@@ -29,10 +29,7 @@ public struct SkillIndexEntry: Sendable, Hashable {
 public enum SkillIndexer {
     /// Generate a markdown Skills index from the provided roots.
     public static func generate(
-        codexRoots: [URL],
-        claudeRoot: URL?,
-        codexSkillManagerRoot: URL? = nil,
-        copilotRoot: URL? = nil,
+        roots: [AgentKind: [URL]],
         include: IndexInclude = .all,
         recursive: Bool = false,
         maxDepth: Int? = nil,
@@ -42,8 +39,8 @@ public enum SkillIndexer {
         var entries: [SkillIndexEntry] = []
 
         func collect(agent: AgentKind, root: URL) {
-            let roots = [ScanRoot(agent: agent, rootURL: root, recursive: recursive, maxDepth: maxDepth)]
-            let files = SkillsScanner.findSkillFiles(roots: roots, excludeDirNames: Set(excludes), excludeGlobs: excludeGlobs)[roots[0]] ?? []
+            let scanRoots = [ScanRoot(agent: agent, rootURL: root, recursive: recursive, maxDepth: maxDepth)]
+            let files = SkillsScanner.findSkillFiles(roots: scanRoots, excludeDirNames: Set(excludes), excludeGlobs: excludeGlobs)[scanRoots[0]] ?? []
             for f in files {
                 guard let doc = SkillLoader.load(agent: agent, rootURL: root, skillFileURL: f) else { continue }
                 let name = doc.name ?? f.deletingLastPathComponent().lastPathComponent
@@ -65,20 +62,20 @@ public enum SkillIndexer {
             }
         }
 
-        switch include {
-        case .codex:
-            codexRoots.forEach { collect(agent: .codex, root: $0) }
-        case .claude:
-            if let c = claudeRoot { collect(agent: .claude, root: c) }
-        case .codexSkillManager:
-            if let csm = codexSkillManagerRoot { collect(agent: .codexSkillManager, root: csm) }
-        case .copilot:
-            if let cp = copilotRoot { collect(agent: .copilot, root: cp) }
-        case .all:
-            codexRoots.forEach { collect(agent: .codex, root: $0) }
-            if let c = claudeRoot { collect(agent: .claude, root: c) }
-            if let csm = codexSkillManagerRoot { collect(agent: .codexSkillManager, root: csm) }
-            if let cp = copilotRoot { collect(agent: .copilot, root: cp) }
+        for (agent, urls) in roots {
+            // Check if this agent should be included
+            let shouldInclude: Bool
+            switch include {
+            case .all: shouldInclude = true
+            case .codex: shouldInclude = (agent == .codex)
+            case .claude: shouldInclude = (agent == .claude)
+            case .codexSkillManager: shouldInclude = (agent == .codexSkillManager)
+            case .copilot: shouldInclude = (agent == .copilot)
+            }
+            
+            if shouldInclude {
+                urls.forEach { collect(agent: agent, root: $0) }
+            }
         }
 
         return entries.sorted { lhs, rhs in
@@ -87,6 +84,34 @@ public enum SkillIndexer {
             }
             return lhs.agent.rawValue < rhs.agent.rawValue
         }
+    }
+
+    /// Backwards-compatible generate API.
+    public static func generate(
+        codexRoots: [URL],
+        claudeRoot: URL?,
+        codexSkillManagerRoot: URL? = nil,
+        copilotRoot: URL? = nil,
+        include: IndexInclude = .all,
+        recursive: Bool = false,
+        maxDepth: Int? = nil,
+        excludes: [String] = [".git", ".system", "__pycache__", ".DS_Store"],
+        excludeGlobs: [String] = []
+    ) -> [SkillIndexEntry] {
+        var roots: [AgentKind: [URL]] = [:]
+        roots[.codex] = codexRoots
+        if let c = claudeRoot { roots[.claude] = [c] }
+        if let csm = codexSkillManagerRoot { roots[.codexSkillManager] = [csm] }
+        if let cp = copilotRoot { roots[.copilot] = [cp] }
+        
+        return generate(
+            roots: roots,
+            include: include,
+            recursive: recursive,
+            maxDepth: maxDepth,
+            excludes: excludes,
+            excludeGlobs: excludeGlobs
+        )
     }
 
     /// Backwards-compatible single-root API.

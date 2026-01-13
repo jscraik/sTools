@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "skillsctl remote verify output",
+  "type": "object",
+  "required": ["slug", "outcome"],
+  "properties": {
+    "slug": { "type": "string" },
+    "version": { "type": ["string", "null"] },
+    "archiveSHA256": { "type": ["string", "null"] },
+    "outcome": {
+      "type": "object",
+      "required": ["mode", "checksumValidated", "signatureValidated", "trustedSigner", "issues"],
+      "properties": {
+        "mode": { "type": "string" },
+        "checksumValidated": { "type": "boolean" },
+        "signatureValidated": { "type": "boolean" },
+        "trustedSigner": { "type": "boolean" },
+        "issues": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
