@@ -217,7 +217,7 @@ private extension ValidateView {
             }
             .padding(.horizontal, DesignTokens.Spacing.sm)
             .padding(.vertical, DesignTokens.Spacing.xs)
-            .background(glassBarStyle(cornerRadius: 0))
+            .background(cleanToolbarStyle(cornerRadius: 0))
             
             Divider()
 
@@ -380,7 +380,7 @@ private extension ValidateView {
                                     .font(.system(size: 11, weight: .bold))
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.customGlassProminent)
+                            .buttonStyle(.cleanProminent)
                             .tint(DesignTokens.Colors.Accent.green)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)

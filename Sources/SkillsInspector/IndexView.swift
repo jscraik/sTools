@@ -1,6 +1,21 @@
 import SwiftUI
 import SkillsCore
 
+// MARK: - Supporting Types
+struct SkillVersionHistoryEntry: Identifiable, Codable {
+    let id = UUID()
+    let skillPath: String
+    let skillName: String
+    let oldVersion: String?
+    let newVersion: String
+    let timestamp: Date
+    let changeNote: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case skillPath, skillName, oldVersion, newVersion, timestamp, changeNote
+    }
+}
+
 @MainActor
 final class IndexViewModel: ObservableObject {
     @Published var entries: [SkillIndexEntry] = []
@@ -15,6 +30,11 @@ final class IndexViewModel: ObservableObject {
     @Published var selectedPath: String?
     private var currentTask: Task<([SkillIndexEntry], String, String), Never>?
     @Published var changelogPath: URL?
+    
+    // Enhanced version management properties
+    @Published var skillVersionBump: IndexBump = .none
+    @Published var isUpdatingSkillVersions = false
+    @Published var skillVersionHistory: [SkillVersionHistoryEntry] = []
     
     let selectionStorageKey = "IndexView.lastSelection"
 
@@ -155,6 +175,166 @@ final class IndexViewModel: ObservableObject {
         currentTask?.cancel()
         isGenerating = false
     }
+    
+    // MARK: - Enhanced Version Management
+    
+    /// Update version for a specific skill
+    func updateSkillVersion(
+        _ entry: SkillIndexEntry, 
+        newVersion: String,
+        codexRoots: [URL],
+        claudeRoot: URL,
+        codexSkillManagerRoot: URL?,
+        copilotRoot: URL?,
+        recursive: Bool,
+        excludes: [String],
+        excludeGlobs: [String]
+    ) async {
+        guard !newVersion.isEmpty else { return }
+        
+        let skillURL = URL(fileURLWithPath: entry.path)
+        guard let content = try? String(contentsOf: skillURL, encoding: .utf8) else { return }
+        
+        // Parse and update frontmatter
+        let updatedContent = updateVersionInFrontmatter(content: content, newVersion: newVersion)
+        
+        do {
+            try updatedContent.write(to: skillURL, atomically: true, encoding: .utf8)
+            
+            // Record in history
+            let historyEntry = SkillVersionHistoryEntry(
+                skillPath: entry.path,
+                skillName: entry.name,
+                oldVersion: entry.version,
+                newVersion: newVersion,
+                timestamp: Date(),
+                changeNote: nil
+            )
+            skillVersionHistory.append(historyEntry)
+            
+            // Regenerate index to reflect changes
+            await generate(
+                codexRoots: codexRoots,
+                claudeRoot: claudeRoot,
+                codexSkillManagerRoot: codexSkillManagerRoot,
+                copilotRoot: copilotRoot,
+                recursive: recursive,
+                excludes: excludes,
+                excludeGlobs: excludeGlobs
+            )
+        } catch {
+            // Handle error silently for now
+        }
+    }
+    
+    /// Bulk update all skill versions
+    func bumpAllSkillVersions(
+        codexRoots: [URL],
+        claudeRoot: URL,
+        codexSkillManagerRoot: URL?,
+        copilotRoot: URL?,
+        recursive: Bool,
+        excludes: [String],
+        excludeGlobs: [String]
+    ) async {
+        guard skillVersionBump != .none else { return }
+        
+        isUpdatingSkillVersions = true
+        defer { isUpdatingSkillVersions = false }
+        
+        for entry in entries {
+            let currentVersion = entry.version ?? "0.1.0"
+            let newVersion = bumpSemanticVersion(currentVersion, bump: skillVersionBump)
+            await updateSkillVersion(
+                entry,
+                newVersion: newVersion,
+                codexRoots: codexRoots,
+                claudeRoot: claudeRoot,
+                codexSkillManagerRoot: codexSkillManagerRoot,
+                copilotRoot: copilotRoot,
+                recursive: recursive,
+                excludes: excludes,
+                excludeGlobs: excludeGlobs
+            )
+        }
+    }
+    
+    /// Get changelog file path for display
+    func getChangelogDisplayPath() -> String {
+        guard let path = changelogPath else {
+            return resolveChangelogPath()?.path.replacingOccurrences(
+                of: FileManager.default.homeDirectoryForCurrentUser.path,
+                with: "~"
+            ) ?? "Not determined"
+        }
+        return path.path.replacingOccurrences(
+            of: FileManager.default.homeDirectoryForCurrentUser.path,
+            with: "~"
+        )
+    }
+    
+    // MARK: - Private Helpers
+    
+    private func updateVersionInFrontmatter(content: String, newVersion: String) -> String {
+        let lines = content.components(separatedBy: .newlines)
+        var updatedLines: [String] = []
+        var inFrontmatter = false
+        var foundVersion = false
+        
+        for line in lines {
+            if line == "---" {
+                if !inFrontmatter {
+                    inFrontmatter = true
+                    updatedLines.append(line)
+                } else {
+                    // End of frontmatter
+                    if !foundVersion {
+                        updatedLines.append("version: \(newVersion)")
+                    }
+                    updatedLines.append(line)
+                    inFrontmatter = false
+                }
+            } else if inFrontmatter && line.hasPrefix("version:") {
+                updatedLines.append("version: \(newVersion)")
+                foundVersion = true
+            } else {
+                updatedLines.append(line)
+            }
+        }
+        
+        // If no frontmatter exists, add it
+        if !foundVersion {
+            let frontmatter = [
+                "---",
+                "version: \(newVersion)",
+                "---",
+                ""
+            ]
+            return frontmatter.joined(separator: "\n") + content
+        }
+        
+        return updatedLines.joined(separator: "\n")
+    }
+    
+    private func bumpSemanticVersion(_ version: String, bump: IndexBump) -> String {
+        let comps = version.split(separator: ".").compactMap { Int($0) }
+        var major = comps.count > 0 ? comps[0] : 0
+        var minor = comps.count > 1 ? comps[1] : 0
+        var patch = comps.count > 2 ? comps[2] : 0
+        
+        switch bump {
+        case .major:
+            major += 1; minor = 0; patch = 0
+        case .minor:
+            minor += 1; patch = 0
+        case .patch:
+            patch += 1
+        case .none:
+            break
+        }
+        
+        return "\(major).\(minor).\(patch)"
+    }
 }
 
 struct IndexView: View {
@@ -258,7 +438,7 @@ private extension IndexView {
                     .help("Recursive search: \(recursive ? "On" : "Off")")
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Version Bump")
+                        Text("Index Version Bump")
                             .font(.system(.caption2, weight: .bold))
                             .foregroundStyle(DesignTokens.Colors.Text.tertiary)
                             .textCase(.uppercase)
@@ -272,6 +452,7 @@ private extension IndexView {
                         .pickerStyle(.segmented)
                         .scaleEffect(0.9)
                         .frame(width: 240)
+                        .help("Bumps the version of the generated skills index, not individual skills")
                     }
                 }
 
@@ -309,12 +490,13 @@ private extension IndexView {
                             .foregroundStyle(DesignTokens.Colors.Text.secondary)
                     }
                 }
+            }
             
             Divider()
         }
         .padding(.horizontal, DesignTokens.Spacing.sm)
         .padding(.vertical, DesignTokens.Spacing.xs)
-        .background(glassBarStyle(cornerRadius: 0))
+        .background(cleanToolbarStyle(cornerRadius: 0))
     }
     
     @ViewBuilder
@@ -323,16 +505,17 @@ private extension IndexView {
             // Skills list (fixed width)
             Group {
                 if viewModel.isGenerating {
-                    // Loading state with skeletons
+                    // Loading state with consistent skeleton count
                     ScrollView {
                         VStack(spacing: DesignTokens.Spacing.xxs) {
-                            ForEach(0..<5, id: \.self) { _ in
+                            ForEach(0..<6, id: \.self) { _ in
                                 SkeletonIndexRow()
                             }
                         }
                         .padding(DesignTokens.Spacing.xs)
                     }
                 } else if viewModel.entries.isEmpty {
+                    // Empty state using ContentUnavailableView pattern
                     EmptyStateView(
                         icon: "doc.text.magnifyingglass",
                         title: "Ready to Index",
@@ -358,7 +541,7 @@ private extension IndexView {
     private var skillsList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
-                // Settings section
+                // Settings section - Using Form pattern for better structure
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
                     HStack {
                         Image(systemName: "slider.horizontal.3")
@@ -369,12 +552,12 @@ private extension IndexView {
                     }
                     .padding(.bottom, DesignTokens.Spacing.hair)
                     
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
-                        HStack(alignment: .top, spacing: DesignTokens.Spacing.sm) {
-                            VStack(alignment: .leading, spacing: DesignTokens.Spacing.micro) {
-                                Text("EXISTING VERSION")
-                                    .font(.system(size: 9, weight: .black))
-                                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                    Form {
+                        Section {
+                            HStack {
+                                Text("Current Index Version")
+                                    .help("Current version of the skills index (not individual skills)")
+                                Spacer()
                                 TextField("0.1.0", text: $viewModel.existingVersion)
                                     .textFieldStyle(.roundedBorder)
                                     .frame(width: 80)
@@ -382,22 +565,110 @@ private extension IndexView {
                             }
                             
                             VStack(alignment: .leading, spacing: DesignTokens.Spacing.micro) {
-                                Text("CHANGELOG NOTE")
-                                    .font(.system(size: 9, weight: .black))
-                                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
-                                TextField("Describe changes...", text: $viewModel.changelogNote)
+                                HStack {
+                                    Text("Changelog Note")
+                                        .help("This note goes to a separate changelog file, not individual skills")
+                                    Spacer()
+                                }
+                                TextField("Describe index changes...", text: $viewModel.changelogNote, axis: .vertical)
                                     .textFieldStyle(.roundedBorder)
-                                    .bodySmall()
+                                    .lineLimit(2...4)
+                            }
+                            
+                            // Changelog file path display
+                            if !viewModel.changelogNote.isEmpty {
+                                HStack(spacing: DesignTokens.Spacing.hair) {
+                                    Image(systemName: "doc.text")
+                                        .font(.caption2)
+                                        .foregroundStyle(DesignTokens.Colors.Icon.secondary)
+                                    Text("Will write to: \(viewModel.getChangelogDisplayPath())")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                                }
                             }
                         }
                     }
-                    .padding(DesignTokens.Spacing.xs)
+                    .formStyle(.grouped)
+                    .scrollContentBackground(.hidden)
                     .background(DesignTokens.Colors.Background.tertiary.opacity(0.4))
                     .cornerRadius(DesignTokens.Radius.md)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
-                            .stroke(DesignTokens.Colors.Border.light, lineWidth: 1)
-                    )
+                    .frame(height: viewModel.changelogNote.isEmpty ? 120 : 160)
+                }
+                .padding(.bottom, DesignTokens.Spacing.xs)
+                
+                // Bulk Skill Version Management Section - Using Form pattern
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+                    HStack {
+                        Image(systemName: "gearshape.2")
+                            .foregroundStyle(DesignTokens.Colors.Accent.orange)
+                        Text("Bulk Skill Version Management")
+                            .heading3()
+                        Spacer()
+                    }
+                    .padding(.bottom, DesignTokens.Spacing.hair)
+                    
+                    Form {
+                        Section {
+                            HStack {
+                                Text("Skill Version Bump")
+                                    .help("Bumps the version in each individual SKILL.md file")
+                                Spacer()
+                                Picker("Bump Type", selection: $viewModel.skillVersionBump) {
+                                    Text("None").tag(IndexBump.none)
+                                    Text("Patch").tag(IndexBump.patch)
+                                    Text("Minor").tag(IndexBump.minor)
+                                    Text("Major").tag(IndexBump.major)
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 100)
+                            }
+                            
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    if !viewModel.entries.isEmpty {
+                                        Text("Will update \(viewModel.entries.count) skill files")
+                                            .font(.caption2)
+                                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Button {
+                                    Task { 
+                                        await viewModel.bumpAllSkillVersions(
+                                            codexRoots: codexRoots,
+                                            claudeRoot: claudeRoot,
+                                            codexSkillManagerRoot: codexSkillManagerRoot,
+                                            copilotRoot: copilotRoot,
+                                            recursive: recursive,
+                                            excludes: excludes,
+                                            excludeGlobs: excludeGlobs
+                                        )
+                                    }
+                                } label: {
+                                    HStack(spacing: DesignTokens.Spacing.hair) {
+                                        if viewModel.isUpdatingSkillVersions {
+                                            ProgressView()
+                                                .scaleEffect(0.7)
+                                        } else {
+                                            Image(systemName: "arrow.up.circle.fill")
+                                        }
+                                        Text(viewModel.isUpdatingSkillVersions ? "Updating..." : "Bump All")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                    }
+                                }
+                                .disabled(viewModel.skillVersionBump == .none || viewModel.isUpdatingSkillVersions)
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .help("Update version in all SKILL.md frontmatter blocks")
+                            }
+                        }
+                    }
+                    .formStyle(.grouped)
+                    .scrollContentBackground(.hidden)
+                    .background(DesignTokens.Colors.Background.tertiary.opacity(0.4))
+                    .cornerRadius(DesignTokens.Radius.md)
+                    .frame(height: 100)
                 }
                 .padding(.bottom, DesignTokens.Spacing.xs)
                 
@@ -461,7 +732,7 @@ private extension IndexView {
                         Label("Copy", systemImage: "doc.on.doc")
                             .captionText()
                     }
-                    .buttonStyle(.customGlass)
+                    .buttonStyle(.clean)
                     .controlSize(.small)
                     
                     Button {
@@ -481,12 +752,12 @@ private extension IndexView {
                         Label("Save", systemImage: "square.and.arrow.down")
                             .captionText()
                     }
-                    .buttonStyle(.customGlassProminent)
+                    .buttonStyle(.cleanProminent)
                     .controlSize(.small)
                 }
                 .padding(.horizontal, DesignTokens.Spacing.xs)
                 .padding(.vertical, DesignTokens.Spacing.xxs)
-                .background(glassBarStyle(cornerRadius: 12))
+                .background(cleanToolbarStyle(cornerRadius: 12))
 
                 MarkdownPreviewView(content: preview)
                     .id(viewModel.selectedPath ?? "generated-preview")

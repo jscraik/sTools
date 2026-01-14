@@ -262,3 +262,30 @@ public struct SkillPublisher: Sendable {
         return frontmatter["version"]
     }
 }
+
+/// Default pinned tool configuration for clawdhub@0.1.0
+/// This is the officially supported version for reproducible publishing.
+public struct PinnedTool: Sendable {
+    /// The pinned version of clawdhub
+    public static let version = "0.1.0"
+
+    /// The SHA-512 integrity hash for clawdhub@0.1.0
+    /// This is an SRI-style hash that ensures the exact tool binary is used.
+    public static let integritySHA512 = "LZ0mRf61F5SjgprrMwgyLRqMOKxC5sQZYF1tZGgZCawiaVfb79A8cp0Fl32/JNRqiRI7TB0/EuPJPMJ4evmK0g=="
+
+    /// The expected tool name
+    public static let toolName = "clawdhub"
+
+    /// Creates a ToolConfig with the pinned tool configuration
+    /// - Parameter toolPath: Path to the clawdhub binary
+    /// - Returns: A ToolConfig with the pinned version and integrity hash
+    public static func toolConfig(toolPath: URL) -> SkillPublisher.ToolConfig {
+        SkillPublisher.ToolConfig(
+            toolPath: toolPath,
+            toolName: toolName,
+            expectedSHA256: nil,
+            expectedSHA512: integritySHA512,
+            arguments: ["publish", "--artifact", "{artifact}", "--attestation", "{attestation}"]
+        )
+    }
+}

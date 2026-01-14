@@ -39,16 +39,19 @@ public struct RemoteVerificationLimits: Sendable {
     public static let `default` = RemoteVerificationLimits()
 }
 
-/// Manifest describing an artifact’s integrity and provenance.
+/// Manifest describing an artifact's integrity and provenance.
 public struct RemoteArtifactManifest: Codable, Sendable {
+    public let name: String
+    public let version: String
     public let sha256: String
     public let size: Int64?
     public let signature: String?
     public let signerKeyId: String?
     public let trustedSigners: [String]?
     public let revokedKeys: [String]?
-    public let targets: [AgentKind]?
     public let builtWith: BuiltWith?
+    public let targets: [AgentKind]?
+    public let minAppVersion: String?
 
     public struct BuiltWith: Codable, Sendable {
         public let tool: String
@@ -63,23 +66,29 @@ public struct RemoteArtifactManifest: Codable, Sendable {
     }
 
     public init(
+        name: String,
+        version: String,
         sha256: String,
         size: Int64? = nil,
         signature: String? = nil,
         signerKeyId: String? = nil,
         trustedSigners: [String]? = nil,
         revokedKeys: [String]? = nil,
+        builtWith: BuiltWith? = nil,
         targets: [AgentKind]? = nil,
-        builtWith: BuiltWith? = nil
+        minAppVersion: String? = nil
     ) {
+        self.name = name
+        self.version = version
         self.sha256 = sha256
         self.size = size
         self.signature = signature
         self.signerKeyId = signerKeyId
         self.trustedSigners = trustedSigners
         self.revokedKeys = revokedKeys
-        self.targets = targets
         self.builtWith = builtWith
+        self.targets = targets
+        self.minAppVersion = minAppVersion
     }
 }
 
@@ -145,4 +154,50 @@ public struct RemoteTrustStore: Sendable {
 
     /// In-memory empty store for callers that do not persist trust yet.
     public static let ephemeral = RemoteTrustStore()
+
+    // MARK: - Persistence
+
+    private static var trustStoreURL: URL {
+        let fm = FileManager.default
+        let appSupportURL = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let supportDir = appSupportURL.appendingPathComponent("SkillsInspector", isDirectory: true)
+
+        // Ensure directory exists
+        if !fm.fileExists(atPath: supportDir.path) {
+            try? fm.createDirectory(at: supportDir, withIntermediateDirectories: true)
+        }
+
+        return supportDir.appendingPathComponent("trust.json")
+    }
+
+    /// Load trust store from disk, returning ephemeral store if file doesn't exist or is invalid.
+    public static func load() -> RemoteTrustStore {
+        let url = trustStoreURL
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .ephemeral
+        }
+
+        guard let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode(TrustStoreFile.self, from: data) else {
+            return .ephemeral
+        }
+
+        return RemoteTrustStore(keys: decoded.keys)
+    }
+
+    /// Save trust store to disk. Returns true on success, false on failure.
+    public func save() -> Bool {
+        let url = Self.trustStoreURL
+        let file = TrustStoreFile(keys: Array(keys.values))
+        guard let data = try? JSONEncoder().encode(file),
+              (try? data.write(to: url)) != nil else {
+            return false
+        }
+        return true
+    }
+
+    /// Internal file representation for JSON serialization.
+    private struct TrustStoreFile: Codable {
+        let keys: [TrustedKey]
+    }
 }

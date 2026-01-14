@@ -87,7 +87,7 @@ struct LegacyContentView: View {
             }
         }
         .frame(minWidth: 1000, minHeight: 700)
-        .background(appGlassBackground)
+        .background(DesignTokens.Colors.Background.primary)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
@@ -100,10 +100,9 @@ struct LegacyContentView: View {
                     Text("sTools")
                         .heading3()
                 }
-                .padding(.horizontal, DesignTokens.Spacing.xxxs)
-                .padding(.vertical, DesignTokens.Spacing.hair + DesignTokens.Spacing.micro)
-                .background(glassBarStyle(tint: DesignTokens.Colors.Accent.blue.opacity(0.05)))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal, DesignTokens.Spacing.xs)
+                .padding(.vertical, DesignTokens.Spacing.xxxs)
+                .background(cleanToolbarStyle())
             }
             ToolbarItemGroup(placement: .automatic) {
                 HStack(spacing: DesignTokens.Spacing.xxxs) {
@@ -114,10 +113,9 @@ struct LegacyContentView: View {
                     Image(systemName: "magnifyingglass")
                         .accessibilityLabel("Search")
                 }
-                .padding(.horizontal, DesignTokens.Spacing.xxxs)
-                .padding(.vertical, DesignTokens.Spacing.hair + DesignTokens.Spacing.micro)
-                .background(glassBarStyle(tint: DesignTokens.Colors.Accent.blue.opacity(0.05)))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.horizontal, DesignTokens.Spacing.xs)
+                .padding(.vertical, DesignTokens.Spacing.xxxs)
+                .background(cleanToolbarStyle())
             }
         }
         .alert("Invalid Root Directory", isPresented: $showingRootError) {
@@ -278,8 +276,12 @@ private extension LegacyContentView {
                         }
                         .padding(.horizontal, DesignTokens.Spacing.xs)
                         .padding(.vertical, DesignTokens.Spacing.hair)
-                        .background(DesignTokens.Colors.Background.tertiary.opacity(0.3))
+                        .background(DesignTokens.Colors.Background.primary)
                         .cornerRadius(DesignTokens.Radius.sm)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                                .stroke(DesignTokens.Colors.Border.light, lineWidth: 1)
+                        )
                     }
                     
                     // Filters Section
@@ -309,7 +311,7 @@ private extension LegacyContentView {
                 .padding(.bottom, DesignTokens.Spacing.lg)
             }
         }
-        .background(DesignTokens.Colors.Background.secondary.opacity(0.8).ignoresSafeArea())
+        .background(DesignTokens.Colors.Background.secondary.ignoresSafeArea())
         .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
     }
 
@@ -419,7 +421,7 @@ private extension LegacyContentView {
         }
         .padding(.horizontal, DesignTokens.Spacing.xxs)
         .padding(.vertical, DesignTokens.Spacing.xxxs)
-        .background(DesignTokens.Colors.Background.primary.opacity(0.4))
+        .background(DesignTokens.Colors.Background.primary)
         .cornerRadius(DesignTokens.Radius.md)
         .overlay(
             RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
@@ -477,14 +479,18 @@ private extension LegacyContentView {
                     .font(.caption)
                     .foregroundStyle(DesignTokens.Colors.Text.secondary)
                 Spacer()
-                Image(systemName: "chevron.up.down")
+                Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(DesignTokens.Colors.Text.tertiary)
             }
             .padding(.horizontal, DesignTokens.Spacing.xs)
             .padding(.vertical, DesignTokens.Spacing.hair)
-            .background(DesignTokens.Colors.Background.tertiary.opacity(0.3))
-            .cornerRadius(DesignTokens.Radius.sm)
+            .background(DesignTokens.Colors.Background.primary)
+            .cornerRadius(DesignTokens.Spacing.sm)
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                    .stroke(DesignTokens.Colors.Border.light, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -498,14 +504,18 @@ private extension LegacyContentView {
                     .font(.caption)
                     .foregroundStyle(DesignTokens.Colors.Text.secondary)
                 Spacer()
-                Image(systemName: "chevron.up.down")
+                Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(DesignTokens.Colors.Text.tertiary)
             }
             .padding(.horizontal, DesignTokens.Spacing.xs)
             .padding(.vertical, DesignTokens.Spacing.hair)
-            .background(DesignTokens.Colors.Background.tertiary.opacity(0.3))
+            .background(DesignTokens.Colors.Background.primary)
             .cornerRadius(DesignTokens.Radius.sm)
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
+                    .stroke(DesignTokens.Colors.Border.light, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -582,11 +592,11 @@ private extension LegacyContentView {
         return panel.runModal() == .OK ? panel.url : nil
     }
 
-    private var appGlassBackground: some View {
+    private var cleanBackground: some View {
         DesignTokens.Colors.Background.primary
     }
 
-    private var sidebarGlassBackground: some View {
+    private var cleanSidebarBackground: some View {
         DesignTokens.Colors.Background.secondary
     }
 }

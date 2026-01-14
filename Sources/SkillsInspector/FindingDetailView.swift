@@ -201,7 +201,7 @@ struct FindingDetailView: View {
                         Label("Apply Correction", systemImage: "magicmouse")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.customGlassProminent)
+                    .buttonStyle(.cleanProminent)
                     .tint(DesignTokens.Colors.Accent.green)
                     .controlSize(.large)
                 } else {
@@ -239,7 +239,7 @@ struct FindingDetailView: View {
                     Label("Open Editor", systemImage: "pencil.and.outline")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.customGlass)
+                .buttonStyle(.clean)
                 
                 Button {
                     addToBaseline()
@@ -247,7 +247,7 @@ struct FindingDetailView: View {
                     Label("Add to Baseline", systemImage: "archivebox")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.customGlass)
+                .buttonStyle(.clean)
                 
                 Button {
                     FindingActions.showInFinder(finding.fileURL)
@@ -255,7 +255,7 @@ struct FindingDetailView: View {
                     Label("Finder", systemImage: "folder")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.customGlass)
+                .buttonStyle(.clean)
             }
         }
         .padding(DesignTokens.Spacing.sm)

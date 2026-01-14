@@ -41,5 +41,8 @@ Icon?
 # Local configuration and cache files
 .skillsctl/cache.json
 
+# Ralph Loop (keep config, exclude append-only log)
+.ralph/progress.md
+
 # Keep Package.resolved for dependency locking
 # Keep Icon.icns and Icon.png as they appear to be project assets

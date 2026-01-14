@@ -116,6 +116,9 @@ install_binary() {
 
 install_binary "$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
 
+# Add rpath for frameworks directory
+install_name_tool -add_rpath "@loader_path/../Frameworks" "$APP/Contents/MacOS/$APP_NAME" 2>/dev/null || true
+
 # Copy icon if exists
 ICON_SRC=""
 if [[ -f "$ROOT/Sources/SkillsInspector/Resources/Icon.icns" ]]; then
@@ -128,6 +131,31 @@ if [[ -n "$ICON_SRC" ]]; then
   cp "$ICON_SRC" "$APP/Contents/Resources/Icon.icns"
 else
   echo "Warning: Icon.icns not found in repo root or Resources; app will use default icon." >&2
+fi
+
+# Copy Sparkle framework
+SPARKLE_FRAMEWORK_PATH=""
+for arch in "${ARCH_LIST[@]}"; do
+  case "$arch" in
+    arm64|x86_64)
+      SPARKLE_PATH=".build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+      ;;
+    *)
+      SPARKLE_PATH=".build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+      ;;
+  esac
+  
+  if [[ -d "$SPARKLE_PATH" ]]; then
+    SPARKLE_FRAMEWORK_PATH="$SPARKLE_PATH"
+    break
+  fi
+done
+
+if [[ -n "$SPARKLE_FRAMEWORK_PATH" && -d "$SPARKLE_FRAMEWORK_PATH" ]]; then
+  echo "Copying Sparkle framework from $SPARKLE_FRAMEWORK_PATH"
+  cp -R "$SPARKLE_FRAMEWORK_PATH" "$APP/Contents/Frameworks/"
+else
+  echo "Warning: Sparkle framework not found at expected location" >&2
 fi
 
 # Ensure contents are writable before stripping attributes and signing.
@@ -159,6 +187,12 @@ if [[ "$SIGNING_MODE" == "adhoc" || -z "$APP_IDENTITY" ]]; then
   CODESIGN_ARGS=(--force --sign "-")
 else
   CODESIGN_ARGS=(--force --timestamp --options runtime --sign "$APP_IDENTITY")
+fi
+
+# Sign frameworks first
+if [[ -d "$APP/Contents/Frameworks/Sparkle.framework" ]]; then
+  echo "Signing Sparkle framework"
+  codesign "${CODESIGN_ARGS[@]}" "$APP/Contents/Frameworks/Sparkle.framework"
 fi
 
 codesign "${CODESIGN_ARGS[@]}" \

@@ -1,23 +1,35 @@
 import SwiftUI
 import SkillsCore
 
+enum RemoteSourceMode: String, CaseIterable {
+    case remote = "Remote"
+    case local = "Local"
+
+    var displayName: String { rawValue }
+}
+
 struct RemoteView: View {
     @ObservedObject var viewModel: RemoteViewModel
     @ObservedObject var trustStoreVM: TrustStoreViewModel
     @State private var selectedSkill: RemoteSkill?
     @State private var trustPrompt: TrustPrompt?
+    @State private var sourceMode: RemoteSourceMode = .remote
 
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationTitle("Remote Library")
+                .navigationTitle(sourceMode == .remote ? "Remote Library" : "Local Skills")
         } detail: {
             detailPanel
         }
         .task {
-            if viewModel.skills.isEmpty && !viewModel.isLoading {
+            if sourceMode == .remote && viewModel.skills.isEmpty && !viewModel.isLoading {
                 await viewModel.loadLatest()
             }
+        }
+        .onChange(of: sourceMode) { _, _ in
+            // Clear selection when switching sources
+            selectedSkill = nil
         }
         .onChange(of: selectedSkill?.id) { _, _ in
             if let skill = selectedSkill {
@@ -41,40 +53,63 @@ private extension RemoteView {
                     Label("Marketplace", systemImage: "square.grid.3x3.fill")
                         .font(.system(size: 14, weight: .black))
                         .foregroundStyle(DesignTokens.Colors.Text.primary)
-                    
+
                     Spacer()
-                    
-                    if viewModel.isLoading {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                    } else {
-                        Button {
-                            Task { await viewModel.loadLatest() }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 11, weight: .bold))
+
+                    // Source toggle: Local / Remote
+                    Picker("", selection: $sourceMode) {
+                        ForEach(RemoteSourceMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
                         }
-                        .buttonStyle(.customGlass)
-                        .help("Refresh library")
                     }
-                    
+                    .pickerStyle(.segmented)
+                    .frame(width: 140)
+
+                    if sourceMode == .remote {
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                        } else {
+                            Button {
+                                Task { await viewModel.loadLatest() }
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                            .buttonStyle(.clean)
+                            .help("Refresh library")
+                        }
+                    }
+
                     if viewModel.isBulkActionsEnabled() {
                         Menu {
-                            Button("Verify All") { Task { await viewModel.verifyAll() } }
-                            Button("Update All Verified") { Task { await viewModel.updateAllVerified() } }
+                            Button("Verify All") {
+                                Task { await viewModel.verifyAll() }
+                            }
+                            Button("Update All Verified") {
+                                Task { await viewModel.updateAllVerified() }
+                            }
+                            Divider()
+                            Button("Export Changelog") {
+                                Task { await viewModel.exportChangelog() }
+                            }
                         } label: {
                             Image(systemName: "ellipsis.circle")
                                 .font(.system(size: 11, weight: .bold))
                         }
-                        .buttonStyle(.customGlass)
+                        .buttonStyle(.clean)
                     }
                 }
                 .padding(.horizontal, DesignTokens.Spacing.sm)
                 .padding(.vertical, DesignTokens.Spacing.xs)
                 .background(DesignTokens.Colors.Background.primary.opacity(0.5))
-                
+
                 Divider()
-                
+
+                if let progress = viewModel.bulkOperationProgress {
+                    bulkOperationProgressView(progress)
+                }
+
                 if let error = viewModel.errorMessage {
                     HStack {
                         Image(systemName: "exclamationmark.octagon.fill")
@@ -87,6 +122,17 @@ private extension RemoteView {
                     .background(DesignTokens.Colors.Status.error.opacity(0.1))
                 }
 
+                if let exportedURL = viewModel.exportedChangelogURL {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Exported: \(exportedURL.lastPathComponent)")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(DesignTokens.Colors.Status.success)
+                    .padding(DesignTokens.Spacing.xs)
+                    .background(DesignTokens.Colors.Status.success.opacity(0.1))
+                }
+
                 if viewModel.isLoading && viewModel.skills.isEmpty {
                     VStack(spacing: 8) {
                         ForEach(0..<8, id: \.self) { _ in
@@ -94,7 +140,7 @@ private extension RemoteView {
                         }
                     }
                     .padding(DesignTokens.Spacing.sm)
-                } else if viewModel.skills.isEmpty {
+                } else if sourceMode == .remote && viewModel.skills.isEmpty {
                     VStack(spacing: DesignTokens.Spacing.sm) {
                         Spacer()
                         Image(systemName: "cloud.rain.fill")
@@ -109,14 +155,40 @@ private extension RemoteView {
                             .padding(.horizontal)
                         Spacer()
                     }
+                } else if sourceMode == .local && viewModel.installedVersions.isEmpty {
+                    VStack(spacing: DesignTokens.Spacing.sm) {
+                        Spacer()
+                        Image(systemName: "folder.open.badge.questionmark")
+                            .font(.system(size: 32))
+                            .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+                        Text("No local skills found")
+                            .font(.headline)
+                        Text("Install skills from the remote marketplace.")
+                            .font(.caption)
+                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                        Spacer()
+                    }
                 } else {
                     List(selection: $selectedSkill) {
-                        ForEach(viewModel.skills, id: \.id) { skill in
-                            skillRow(skill)
-                                .tag(skill)
-                                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
+                        if sourceMode == .remote {
+                            ForEach(viewModel.skills, id: \.id) { skill in
+                                skillRow(skill)
+                                    .tag(skill)
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                            }
+                        } else {
+                            // Show local installed skills
+                            ForEach(Array(viewModel.installedVersions.keys.sorted()), id: \.self) { slug in
+                                localSkillRow(slug: slug, version: viewModel.installedVersions[slug] ?? "unknown")
+                                    .tag(slug)
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                            }
                         }
                     }
                     .listStyle(.plain)
@@ -124,6 +196,65 @@ private extension RemoteView {
                 }
             }
         }
+    }
+
+    private func localSkillRow(slug: String, version: String) -> some View {
+        let isSelected = selectedSkill?.slug == slug
+        let displayName = slug.split(separator: "/").last?.components(separatedBy: CharacterSet.alphanumerics.inverted).joined().capitalized ?? slug
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(DesignTokens.Colors.Text.primary)
+
+                    Text(slug)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                }
+
+                Spacer()
+
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(DesignTokens.Colors.Status.success)
+                    .font(.system(size: 14))
+            }
+
+            HStack(spacing: DesignTokens.Spacing.xxxs) {
+                Text("v\(version)")
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(DesignTokens.Colors.Background.tertiary)
+                    .cornerRadius(4)
+
+                Text("LOCAL")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(DesignTokens.Colors.Accent.purple)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(DesignTokens.Colors.Accent.purple.opacity(0.1))
+                    .cornerRadius(4)
+
+                Spacer()
+            }
+        }
+        .padding(10)
+        .background(
+            ZStack {
+                if isSelected {
+                    DesignTokens.Colors.Accent.blue.opacity(0.12)
+                } else {
+                    DesignTokens.Colors.Background.primary.opacity(0.4)
+                }
+            }
+        )
+        .cornerRadius(DesignTokens.Radius.md)
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                .stroke(isSelected ? DesignTokens.Colors.Accent.blue.opacity(0.3) : Color.clear, lineWidth: 1)
+        )
     }
 
     private func skillRow(_ skill: RemoteSkill) -> some View {
@@ -287,12 +418,12 @@ private extension RemoteView {
                                 } else {
                                     Image(systemName: "square.and.arrow.down.fill")
                                 }
-                                Text(viewModel.installedVersions[skill.slug] != nil ? "Update Skill" : "Download & Install")
+                                Text(viewModel.installedVersions[skill.slug] != nil ? "Update and Verify" : "Download and verify")
                                     .fontWeight(.bold)
                             }
                             .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.customGlassProminent)
+                        .buttonStyle(.cleanProminent)
                         .tint(DesignTokens.Colors.Accent.blue)
                         .disabled(previewState.manifest == nil || viewModel.installingSlug != nil)
                         
@@ -303,7 +434,7 @@ private extension RemoteView {
                                 Image(systemName: "square.grid.2x2.fill")
                                     .help("Install to all agent roots")
                             }
-                            .buttonStyle(.customGlass)
+                            .buttonStyle(.clean)
                             .disabled(previewState.manifest == nil || viewModel.installingSlug != nil)
                         }
                         
@@ -313,23 +444,41 @@ private extension RemoteView {
                             Image(systemName: "checkmark.seal.fill")
                                 .help("Re-verify provenance")
                         }
-                        .buttonStyle(.customGlass)
+                        .buttonStyle(.clean)
                         .foregroundStyle(DesignTokens.Colors.Status.success)
                     }
                     
                     // Security / Signer Card
                     signerCard(previewState: previewState)
+
+                    // Per-Target Registration Status
+                    if let outcome = viewModel.multiTargetOutcome {
+                        perTargetStatusCard(outcome: outcome)
+                    }
                     
                     // Content Preview Card
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
                         HStack {
-                            Label("Skill Preview", systemImage: "doc.richtext")
-                                .font(.system(size: 11, weight: .black))
-                                .textCase(.uppercase)
-                                .foregroundStyle(DesignTokens.Colors.Text.tertiary)
-                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label("Skill Preview", systemImage: "doc.richtext")
+                                    .font(.system(size: 11, weight: .black))
+                                    .textCase(.uppercase)
+                                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+
+                                if previewState.status == .available || previewState.preview != nil {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "checkmark.shield.fill")
+                                            .font(.system(size: 8))
+                                            .foregroundStyle(DesignTokens.Colors.Status.success)
+                                        Text("Safe preview from server")
+                                            .font(.system(size: 9, weight: .semibold))
+                                            .foregroundStyle(DesignTokens.Colors.Status.success)
+                                    }
+                                }
+                            }
+
                             Spacer()
-                            
+
                             if previewState.status == .loading {
                                 ProgressView().scaleEffect(0.5)
                             }
@@ -454,7 +603,7 @@ private extension RemoteView {
                         } label: {
                             Label("Trust Signer", systemImage: "hand.raised.fill")
                         }
-                        .buttonStyle(.customGlassProminent)
+                        .buttonStyle(.cleanProminent)
                         .tint(DesignTokens.Colors.Accent.orange)
                         .controlSize(.small)
                     }
@@ -484,6 +633,125 @@ private extension RemoteView {
         .padding(DesignTokens.Spacing.sm)
         .background(DesignTokens.Colors.Background.secondary.opacity(0.3))
         .cornerRadius(DesignTokens.Radius.md)
+    }
+
+    @ViewBuilder
+    private func perTargetStatusCard(outcome: MultiTargetInstallOutcome) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+            HStack {
+                Text("INSTALLATION STATUS")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+
+                Spacer()
+
+                let successRate = Double(outcome.successes.count) / Double(outcome.successes.count + outcome.failures.count) * 100
+                Text("\(Int(successRate))% success")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(successRate >= 90 ? DesignTokens.Colors.Status.success : DesignTokens.Colors.Status.warning)
+            }
+
+            // Display status for each IDE target
+            ForEach([AgentKind.codex, .claude, .copilot], id: \.self) { agent in
+                targetStatusRow(agent: agent, outcome: outcome)
+            }
+        }
+        .padding(DesignTokens.Spacing.sm)
+        .background(DesignTokens.Colors.Background.secondary.opacity(0.3))
+        .cornerRadius(DesignTokens.Radius.md)
+    }
+
+    private func targetStatusRow(agent: AgentKind, outcome: MultiTargetInstallOutcome) -> some View {
+        HStack(spacing: DesignTokens.Spacing.xs) {
+            // IDE icon/label
+            HStack(spacing: 6) {
+                Image(systemName: iconForAgent(agent))
+                    .font(.system(size: 12))
+                    .foregroundStyle(colorForAgent(agent))
+                Text(agent.displayLabel)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignTokens.Colors.Text.primary)
+            }
+            .frame(width: 80, alignment: .leading)
+
+            Spacer()
+
+            // Status indicator
+            if outcome.successes[agent] != nil {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 10))
+                    Text("Installed")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundStyle(DesignTokens.Colors.Status.success)
+            } else if let error = outcome.failures[agent] {
+                HStack(spacing: 4) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10))
+                    Text("Failed")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundStyle(DesignTokens.Colors.Status.error)
+                .help(error)
+            } else {
+                Text("Not attempted")
+                    .font(.system(size: 10))
+                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 8)
+        .background(DesignTokens.Colors.Background.tertiary.opacity(0.3))
+        .cornerRadius(DesignTokens.Radius.sm)
+    }
+
+    private func iconForAgent(_ agent: AgentKind) -> String {
+        switch agent {
+        case .codex: return "square.stack.3d.up.fill"
+        case .claude: return "brain.head.profile"
+        case .copilot: return "sparkles"
+        case .codexSkillManager: return "gear"
+        }
+    }
+
+    private func colorForAgent(_ agent: AgentKind) -> Color {
+        switch agent {
+        case .codex: return DesignTokens.Colors.Accent.blue
+        case .claude: return DesignTokens.Colors.Accent.orange
+        case .copilot: return DesignTokens.Colors.Accent.purple
+        case .codexSkillManager: return DesignTokens.Colors.Icon.secondary
+        }
+    }
+
+    private func bulkOperationProgressView(_ progress: BulkOperationProgress) -> some View {
+        HStack(spacing: DesignTokens.Spacing.xs) {
+            ProgressView(value: progress.progressFraction)
+                .frame(width: 80)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(progress.operation.rawValue)")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                Text("\(progress.completed) of \(progress.total)")
+                    .font(.caption2)
+                    .foregroundStyle(DesignTokens.Colors.Text.secondary)
+            }
+
+            Spacer()
+
+            if progress.hasFailures {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                    Text(progress.failureSummary)
+                }
+                .font(.caption2)
+                .foregroundStyle(DesignTokens.Colors.Status.warning)
+            }
+        }
+        .padding(DesignTokens.Spacing.xs)
+        .background(DesignTokens.Colors.Background.tertiary.opacity(0.5))
+        .cornerRadius(DesignTokens.Radius.sm)
     }
 }
 
@@ -586,7 +854,7 @@ private struct TrustSignerSheet: View {
 
             HStack {
                 Button("Cancel", role: .cancel) { dismiss() }
-                    .buttonStyle(.customGlass)
+                    .buttonStyle(.clean)
                 
                 Spacer()
                 
@@ -600,7 +868,7 @@ private struct TrustSignerSheet: View {
                         .fontWeight(.bold)
                         .frame(width: 120)
                 }
-                .buttonStyle(.customGlassProminent)
+                .buttonStyle(.cleanProminent)
                 .tint(DesignTokens.Colors.Accent.orange)
                 .disabled(publicKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

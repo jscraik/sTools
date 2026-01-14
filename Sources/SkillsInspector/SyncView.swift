@@ -173,7 +173,7 @@ struct SyncView: View {
             }
             .padding(.horizontal, DesignTokens.Spacing.sm)
             .padding(.vertical, DesignTokens.Spacing.xs)
-            .background(glassBarStyle(cornerRadius: 0))
+            .background(cleanToolbarStyle(cornerRadius: 0))
             
             Divider()
 
@@ -267,7 +267,7 @@ private extension SyncView {
                             Label("Expand All", systemImage: "plus.square")
                                 .captionText()
                         }
-                        .buttonStyle(.customGlass)
+                        .buttonStyle(.clean)
                         .controlSize(.small)
 
                         Button {
@@ -278,7 +278,7 @@ private extension SyncView {
                             Label("Collapse", systemImage: "minus.square")
                                 .captionText()
                         }
-                        .buttonStyle(.customGlass)
+                        .buttonStyle(.clean)
                         .controlSize(.small)
                     }
                 }

@@ -162,8 +162,8 @@ public extension RemoteSkillClient {
             download: { _, _ in
                 FileManager.default.temporaryDirectory
             },
-            fetchManifest: { _, _ in
-                RemoteArtifactManifest(sha256: String(repeating: "a", count: 64), size: 1024, signature: "mock", signerKeyId: "dev-key", trustedSigners: ["dev-key"], revokedKeys: nil, targets: [.codex, .claude, .copilot], builtWith: nil)
+            fetchManifest: { slug, version in
+                RemoteArtifactManifest(name: slug, version: version ?? "1.0.0", sha256: String(repeating: "a", count: 64), size: 1024, signature: "mock", signerKeyId: "dev-key", trustedSigners: ["dev-key"], revokedKeys: nil, builtWith: nil, targets: [.codex, .claude, .copilot])
             },
             fetchPreview: { slug, version in
                 RemoteSkillPreview(
@@ -172,7 +172,7 @@ public extension RemoteSkillClient {
                     skillMarkdown: "# \(slug)\n\nPreview content for \(slug).",
                     changelog: "Changes in \(version ?? "1.0.0"):\n- Example change",
                     signerKeyId: "dev-key",
-                    manifest: RemoteArtifactManifest(sha256: String(repeating: "a", count: 64), size: 1024, signature: "mock", signerKeyId: "dev-key", trustedSigners: ["dev-key"], revokedKeys: nil, targets: [.codex, .claude, .copilot], builtWith: nil),
+                    manifest: RemoteArtifactManifest(name: slug, version: version ?? "1.0.0", sha256: String(repeating: "a", count: 64), size: 1024, signature: "mock", signerKeyId: "dev-key", trustedSigners: ["dev-key"], revokedKeys: nil, builtWith: nil, targets: [.codex, .claude, .copilot]),
                     etag: "mock-etag",
                     fetchedAt: Date()
                 )

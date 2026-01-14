@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import SkillsCore
 
 @MainActor
@@ -12,6 +13,9 @@ final class RemoteViewModel: ObservableObject {
     @Published var installedVersions: [String: String] = [:]
     @Published var changelogBySlug: [String: String?] = [:]
     @Published var previewStateBySlug: [String: RemotePreviewState] = [:]
+    @Published var multiTargetOutcome: MultiTargetInstallOutcome?
+    @Published var bulkOperationProgress: BulkOperationProgress?
+    @Published var exportedChangelogURL: URL?
 
     private let client: RemoteSkillClient
     private let installer: RemoteSkillInstaller
@@ -22,6 +26,7 @@ final class RemoteViewModel: ObservableObject {
     private let ledger: SkillLedger?
     private let telemetry: TelemetryClient
     private let features: FeatureFlags
+    private let changelogGenerator = SkillChangelogGenerator()
 
     init(
         client: RemoteSkillClient,
@@ -134,7 +139,24 @@ final class RemoteViewModel: ObservableObject {
             errorMessage = "Manifest unavailable for \(skill.slug). Verification required."
             return
         }
+
+        // Pre-download validation: check size limits from manifest
+        if let declaredSize = manifest.size,
+           declaredSize > RemoteVerificationLimits.default.maxArchiveBytes {
+            let limitMB = RemoteVerificationLimits.default.maxArchiveBytes / 1_048_576
+            let sizeMB = declaredSize / 1_048_576
+            errorMessage = "Download blocked: artifact size (\(sizeMB)MB) exceeds safety limit (\(limitMB)MB)"
+            telemetry.record(
+                TelemetryEvent(
+                    name: "remote_install_blocked",
+                    attributes: ["slug": skill.slug, "reason": "size_limit", "declared_size": String(declaredSize)]
+                )
+            )
+            return
+        }
+
         installingSlug = skill.slug
+        multiTargetOutcome = nil  // Clear previous outcome
         defer { installingSlug = nil }
         let targets: [SkillInstallTarget] = [
             .codex(PathUtil.urlFromPath("~/.codex/skills")),
@@ -152,16 +174,23 @@ final class RemoteViewModel: ObservableObject {
                 trustStore: trustStoreProvider(),
                 skillSlug: skill.slug
             )
+            multiTargetOutcome = outcome  // Store outcome for UI display
+
             if !outcome.failures.isEmpty {
                 let summary = outcome.failures
                     .map { "\($0.key.displayLabel): \($0.value)" }
                     .joined(separator: ", ")
-                errorMessage = "Install failed: \(summary)"
+                errorMessage = "Partial failure: \(summary)"
                 await recordFailureEvents(for: skill, version: skill.latestVersion, failures: outcome.failures)
                 telemetry.record(
                     TelemetryEvent(
-                        name: "remote_install_failed",
-                        attributes: ["slug": skill.slug, "version": skill.latestVersion ?? "unknown"]
+                        name: "remote_install_partial_success",
+                        attributes: [
+                            "slug": skill.slug,
+                            "version": skill.latestVersion ?? "unknown",
+                            "success_count": String(outcome.successes.count),
+                            "failure_count": String(outcome.failures.count)
+                        ]
                     )
                 )
             } else {
@@ -190,6 +219,23 @@ final class RemoteViewModel: ObservableObject {
     func install(slug: String, version: String? = nil) async {
         installingSlug = slug
         defer { installingSlug = nil }
+
+        // Pre-download validation: check size limits from manifest
+        if let manifest = previewStateBySlug[slug]?.manifest,
+           let declaredSize = manifest.size,
+           declaredSize > RemoteVerificationLimits.default.maxArchiveBytes {
+            let limitMB = RemoteVerificationLimits.default.maxArchiveBytes / 1_048_576
+            let sizeMB = declaredSize / 1_048_576
+            errorMessage = "Download blocked: artifact size (\(sizeMB)MB) exceeds safety limit (\(limitMB)MB)"
+            telemetry.record(
+                TelemetryEvent(
+                    name: "remote_install_blocked",
+                    attributes: ["slug": slug, "reason": "size_limit", "declared_size": String(declaredSize)]
+                )
+            )
+            return
+        }
+
         do {
             let archive = try await client.download(slug, version)
             let manifest = previewStateBySlug[slug]?.manifest
@@ -246,18 +292,85 @@ final class RemoteViewModel: ObservableObject {
     }
 
     func verifyAll() async {
-        for skill in skills {
+        guard !skills.isEmpty else { return }
+        let progress = BulkOperationProgress(
+            operation: .verifyAll,
+            total: skills.count,
+            completed: 0,
+            failures: [:]
+        )
+        bulkOperationProgress = progress
+
+        for (index, skill) in skills.enumerated() {
             await fetchPreview(for: skill)
+            let updatedProgress = BulkOperationProgress(
+                operation: .verifyAll,
+                total: skills.count,
+                completed: index + 1,
+                failures: progress.failures
+            )
+            bulkOperationProgress = updatedProgress
         }
+
+        bulkOperationProgress = nil
     }
 
     func updateAllVerified() async {
-        for skill in skills {
-            guard isUpdateAvailable(for: skill) else { continue }
+        let skillsToUpdate = skills.filter { isUpdateAvailable(for: $0) }
+        guard !skillsToUpdate.isEmpty else { return }
+
+        let progress = BulkOperationProgress(
+            operation: .updateAllVerified,
+            total: skillsToUpdate.count,
+            completed: 0,
+            failures: [:]
+        )
+        bulkOperationProgress = progress
+
+        for (index, skill) in skillsToUpdate.enumerated() {
             if previewStateBySlug[skill.slug]?.manifest == nil {
                 await fetchPreview(for: skill)
             }
+
             await install(slug: skill.slug, version: skill.latestVersion)
+
+            let finalProgress = BulkOperationProgress(
+                operation: .updateAllVerified,
+                total: skillsToUpdate.count,
+                completed: index + 1,
+                failures: progress.failures
+            )
+            bulkOperationProgress = finalProgress
+        }
+
+        bulkOperationProgress = nil
+    }
+
+    func exportChangelog() async {
+        guard let ledger else {
+            errorMessage = "Ledger unavailable for changelog export"
+            return
+        }
+
+        do {
+            let events = try await ledger.fetchEvents(limit: 1000)
+            let markdown = changelogGenerator.generateAuditorMarkdown(events: events)
+
+            let savePanel = NSSavePanel()
+            savePanel.allowedContentTypes = [.plainText]
+            savePanel.nameFieldStringValue = "skills-changelog-\(Date().timeIntervalSince1970).md"
+            savePanel.title = "Export Changelog"
+            savePanel.prompt = "Export"
+
+            #if os(macOS)
+            if savePanel.runModal() == .OK, let url = savePanel.url {
+                try markdown.write(to: url, atomically: true, encoding: .utf8)
+                exportedChangelogURL = url
+                errorMessage = nil
+            }
+            #endif
+        } catch {
+            errorMessage = "Failed to export changelog: \(error.localizedDescription)"
         }
     }
 
@@ -433,4 +546,32 @@ enum RemoteProvenanceStatus: String, Sendable {
     case verified
     case unknown
     case failed
+}
+
+struct BulkOperationProgress: Sendable {
+    enum Operation: String, Sendable {
+        case verifyAll = "Verify All"
+        case updateAllVerified = "Update All Verified"
+    }
+
+    var operation: Operation
+    var total: Int
+    var completed: Int
+    var failures: [String: String]
+
+    var progressFraction: Double {
+        guard total > 0 else { return 0 }
+        return Double(completed) / Double(total)
+    }
+
+    var hasFailures: Bool {
+        !failures.isEmpty
+    }
+
+    var failureSummary: String {
+        let count = failures.count
+        if count == 0 { return "" }
+        if count == 1 { return "1 failure" }
+        return "\(count) failures"
+    }
 }

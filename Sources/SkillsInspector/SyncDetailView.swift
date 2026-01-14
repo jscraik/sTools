@@ -120,7 +120,7 @@ private extension SyncDetailView {
                 .foregroundStyle(DesignTokens.Colors.Text.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 200)
-        .background(glassPanelStyle())
+        .background(cleanPanelStyle())
     }
 
     private func diffSection(_ inputs: DiffInputs) -> some View {
@@ -202,7 +202,7 @@ private extension SyncDetailView {
                                 .font(.system(size: 10, weight: .bold))
                         }
                     }
-                    .buttonStyle(.customGlass)
+                    .buttonStyle(.clean)
                     .help("Copy content from \(inputs.leftAgent.displayName) to \(inputs.rightAgent.displayName)")
                     
                     Button {
@@ -214,7 +214,7 @@ private extension SyncDetailView {
                                 .font(.system(size: 10, weight: .bold))
                         }
                     }
-                    .buttonStyle(.customGlass)
+                    .buttonStyle(.clean)
                     .help("Copy content from \(inputs.rightAgent.displayName) to \(inputs.leftAgent.displayName)")
                     
                     Button {
@@ -223,7 +223,7 @@ private extension SyncDetailView {
                         Label("Bump & Align", systemImage: "bolt.fill")
                             .font(.caption.weight(.bold))
                     }
-                    .buttonStyle(.customGlassProminent)
+                    .buttonStyle(.cleanProminent)
                     .tint(DesignTokens.Colors.Accent.green)
                 }
                 .controlSize(.small)
@@ -776,15 +776,17 @@ private struct DiffInputs {
     let diffText: String
 }
 
-#Preview {
-    let roots: [AgentKind: URL] = [
-        .codex: URL(fileURLWithPath: "/tmp/codex"),
-        .claude: URL(fileURLWithPath: "/tmp/claude"),
-        .copilot: URL(fileURLWithPath: "/tmp/copilot")
-    ]
-    SyncDetailView(
-        selection: .different(name: "demo"),
-        rootsByAgent: roots,
-        diffDetail: nil
-    )
+struct SyncDetailView_Previews: PreviewProvider {
+    static var previews: some View {
+        let roots: [AgentKind: URL] = [
+            .codex: URL(fileURLWithPath: "/tmp/codex"),
+            .claude: URL(fileURLWithPath: "/tmp/claude"),
+            .copilot: URL(fileURLWithPath: "/tmp/copilot")
+        ]
+        SyncDetailView(
+            selection: .different(name: "demo"),
+            rootsByAgent: roots,
+            diffDetail: nil
+        )
+    }
 }

@@ -215,6 +215,71 @@ public actor SkillLedger {
         return events
     }
 
+    /// Fetch the last successful install event for a specific skill.
+    /// - Parameters:
+    ///   - skillSlug: The slug identifying the skill
+    ///   - agent: Optional agent filter (Codex, Claude, Copilot)
+    /// - Returns: The most recent successful install event, or nil if none found
+    public func fetchLastSuccessfulInstall(
+        skillSlug: String,
+        agent: AgentKind? = nil
+    ) throws -> LedgerEvent? {
+        guard db != nil else { throw LedgerStoreError("Ledger unavailable") }
+        var sql = """
+        SELECT id, timestamp, event_type, skill_name, skill_slug, version, agent, status, note, source, verification, manifest_sha256, target_path, targets, per_target_results, signer_key_id
+        FROM ledger_events
+        WHERE skill_slug = ? AND event_type IN ('install', 'update') AND status = 'success'
+        """
+        if agent != nil {
+            sql += " AND agent = ?"
+        }
+        sql += " ORDER BY timestamp DESC, id DESC LIMIT 1"
+
+        let stmt = try prepare(sql: sql)
+        defer { sqlite3_finalize(stmt) }
+        var index: Int32 = 1
+        bindText(stmt, index, skillSlug); index += 1
+        if let agent {
+            bindText(stmt, index, agent.rawValue); index += 1
+        }
+
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        let id = sqlite3_column_int64(stmt, 0)
+        let timestamp = stringColumn(stmt, 1)
+        let eventType = stringColumn(stmt, 2)
+        let skillName = stringColumn(stmt, 3) ?? "Unknown"
+        let slug = stringColumn(stmt, 4)
+        let version = stringColumn(stmt, 5)
+        let agentValue = stringColumn(stmt, 6).flatMap(AgentKind.init(rawValue:))
+        let status = stringColumn(stmt, 7).flatMap(LedgerEventStatus.init(rawValue:)) ?? .success
+        let note = stringColumn(stmt, 8)
+        let source = stringColumn(stmt, 9)
+        let verification = stringColumn(stmt, 10).flatMap(RemoteVerificationMode.init(description:))
+        let manifest = stringColumn(stmt, 11)
+        let target = stringColumn(stmt, 12)
+        let targets = SkillLedger.decodeAgentArray(stringColumn(stmt, 13))
+        let perTargetResults = SkillLedger.decodePerTargetResults(stringColumn(stmt, 14))
+        let signerKeyId = stringColumn(stmt, 15)
+        return LedgerEvent(
+            id: id,
+            timestamp: SkillLedger.parseDate(timestamp) ?? Date(),
+            eventType: LedgerEventType(rawValue: eventType ?? "") ?? .install,
+            skillName: skillName,
+            skillSlug: slug,
+            version: version,
+            agent: agentValue,
+            status: status,
+            note: note,
+            source: source,
+            verification: verification,
+            manifestSHA256: manifest,
+            targetPath: target,
+            targets: targets,
+            perTargetResults: perTargetResults,
+            signerKeyId: signerKeyId
+        )
+    }
+
     private static func openDatabase(at url: URL) throws -> OpaquePointer {
         let folder = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
