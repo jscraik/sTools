@@ -37,7 +37,7 @@ public struct WorkflowProgressIndicator: View {
             ForEach(Array(stages.enumerated()), id: \.offset) { index, stage in
                 if index > 0 {
                     Rectangle()
-                        .fill(stageIsBefore(stage, currentStage) ? DesignTokens.Colors.Accent.green : DesignTokens.Colors.Border.secondary)
+                        .fill(stageIsBefore(stage, currentStage) ? DesignTokens.Colors.Accent.green : DesignTokens.Colors.Border.light)
                         .frame(width: 4, height: 2)
                 }
 
@@ -76,7 +76,7 @@ public struct WorkflowProgressIndicator: View {
 
     private func connector(isCompleted: Bool) -> some View {
         Rectangle()
-            .fill(isCompleted ? DesignTokens.Colors.Accent.green : DesignTokens.Colors.Border.secondary)
+            .fill(isCompleted ? DesignTokens.Colors.Accent.green : DesignTokens.Colors.Border.light)
             .frame(width: 24, height: 2)
     }
 

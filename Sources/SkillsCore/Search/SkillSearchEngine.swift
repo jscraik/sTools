@@ -120,7 +120,7 @@ public actor SkillSearchEngine {
     }
 
     private nonisolated static func createSchema(db: inout OpaquePointer?) throws {
-        guard let db = db else { throw SearchError.databaseNotOpen }
+        guard db != nil else { throw SearchError.databaseNotOpen }
 
         // Enable FTS5
         let createFTS = """
@@ -156,7 +156,7 @@ public actor SkillSearchEngine {
         _ skill: Skill,
         content: String
     ) throws {
-        guard let db = db else { throw SearchError.databaseNotOpen }
+        guard db != nil else { throw SearchError.databaseNotOpen }
 
         // Extract content from all markdown files
         let allContent = extractContent(from: skill)
@@ -215,7 +215,7 @@ public actor SkillSearchEngine {
         filters: SearchFilter = SearchFilter(),
         limit: Int = 20
     ) throws -> [SearchResult] {
-        guard let db = db else { throw SearchError.databaseNotOpen }
+        guard db != nil else { throw SearchError.databaseNotOpen }
 
         var sql = """
         SELECT
@@ -276,7 +276,7 @@ public actor SkillSearchEngine {
 
     /// Remove a skill from the index
     public func removeSkill(at slug: String) throws {
-        guard let db = db else { throw SearchError.databaseNotOpen }
+        guard db != nil else { throw SearchError.databaseNotOpen }
 
         let deleteFTS = "DELETE FROM skills_fts WHERE skillSlug = ?;"
         let deleteMeta = "DELETE FROM skills_meta WHERE skillSlug = ?;"
@@ -316,7 +316,7 @@ public actor SkillSearchEngine {
 
     /// Get index statistics
     public func getStats() throws -> Stats {
-        guard let db = db else { throw SearchError.databaseNotOpen }
+        guard db != nil else { throw SearchError.databaseNotOpen }
 
         let countSQL = "SELECT COUNT(*) FROM skills_meta;"
         let sizeSQL = "SELECT SUM(fileSize) FROM skills_meta;"

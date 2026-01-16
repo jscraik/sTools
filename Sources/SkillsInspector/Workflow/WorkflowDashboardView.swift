@@ -281,7 +281,7 @@ private struct StageButton: View {
                 }
 
                 Text(stage?.displayName ?? "All")
-                    .font(.system(size: DesignTokens.Typography.Body.size, weight: isSelected ? DesignTokens.Typography.Body.emphasis : DesignTokens.Typography.Body.regular))
+                    .font(.system(size: DesignTokens.Typography.Body.size, weight: isSelected ? DesignTokens.Typography.Body.emphasis : DesignTokens.Typography.Body.weight))
 
                 if count > 0 {
                     Text("\(count)")

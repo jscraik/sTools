@@ -79,6 +79,17 @@ public struct WorkflowState: Codable, Sendable, Identifiable, Hashable {
     public var versionHistory: [VersionEntry]
     public var createdAt: Date
     public var updatedAt: Date
+    
+    // Implement Hashable manually
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(skillSlug)
+        hasher.combine(stage)
+    }
+    
+    public static func == (lhs: WorkflowState, rhs: WorkflowState) -> Bool {
+        lhs.id == rhs.id && lhs.skillSlug == rhs.skillSlug && lhs.stage == rhs.stage
+    }
 
     public init(
         id: String = UUID().uuidString,
