@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import SkillsCore
 
 final class SkillsCoreTests: XCTestCase {

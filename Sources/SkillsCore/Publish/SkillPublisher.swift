@@ -249,7 +249,7 @@ public struct SkillPublisher: Sendable {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    private func sha512Hex(of fileURL: URL) throws -> String {
+    internal func sha512Hex(of fileURL: URL) throws -> String {
         let data = try Data(contentsOf: fileURL)
         let digest = SHA512.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()

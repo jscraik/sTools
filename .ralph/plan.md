@@ -1,275 +1,433 @@
-# Ralph Plan (linkage-oriented)
+# Ralph Plan (linkage-oriented) - Meta Skill Integration
 
-This is the work queue. Each item should be small enough for one loop iteration.
+This is the work queue for the meta-skill-integration feature. Each item should be small enough for one loop iteration.
 
 **Principle**: Linkage over invention. Before editing, cite the spec section and exact files.
 
+**Project**: stools-meta-skill-integration
+**Branch**: feature/meta-skill-integration
+
 ## Work Items
 
-### Story S3: Pinned Publishing - Vendor CLI with Checksum, Deterministic Zip
+### Story S1: Create Spec module with SkillSpec type
 
-- [x] **Task 1**: Add PinnedTool configuration for clawdhub@0.1.0
-  - Spec reference: `.ralph/pin.md` section "Reproducible Publishing" (line 17)
-  - Files modified: `Sources/SkillsCore/Publish/SkillPublisher.swift`
-  - Expected change: Add `PinnedTool` struct with version 0.1.0 and SHA-512 integrity hash
-  - **Completed**: Added `PinnedTool` struct with static properties for version, integrity SHA-512, and tool name. Added `toolConfig(toolPath:)` method to create pre-configured `ToolConfig`.
+- [x] **Task 1**: Create SkillSpec.swift with core types
+  - Spec reference: `.ralph/prd.json` story S1 acceptance criteria (lines 10-18)
+  - Files created: `Sources/SkillsCore/Spec/SkillSpec.swift`
+  - Expected change: Define SkillSpec with Metadata, Section, ValidationError types
+  - **Completed**: Created `SkillSpec` struct with:
+    - `Metadata` struct for frontmatter (name, description, version, author, tags, minAgentVersion, targets)
+    - `Section` struct for markdown content with heading levels (h1-h6)
+    - `ValidationError` struct with code, message, severity, line, column
+    - `parse()` static method for SKILL.md → SkillSpec conversion
+    - `toMarkdown()` method for SkillSpec → SKILL.md conversion
+    - `toJSON()` and `fromJSON()` for JSON serialization
+    - `validate(for:)` method for agent-specific validation
+    - `diff(_:)` method for semantic comparison
+    - Full Swift 6 Sendable compliance
 
-- [x] **Task 2**: Update CLI to use pinned configuration by default
-  - Spec reference: `prd.json` story S3 acceptance criteria
+- [x] **Task 2**: Create Spec module directory structure
+  - Spec reference: `.ralph/prd.json` story S1 files list (lines 20-24)
+  - Files created: `Sources/SkillsCore/Spec/` directory
+  - Expected change: Create module directory for Spec-related files
+  - **Completed**: Created `Sources/SkillsCore/Spec/` directory structure
+
+- [x] **Task 3**: Create unit tests for SkillSpec
+  - Spec reference: `.ralph/prd.json` story S1 acceptance criteria (line 17)
+  - Files created: `Tests/SkillsCoreTests/SkillSpecTests.swift`
+  - Expected change: Unit tests for round-trip conversion (SKILL.md → Spec → SKILL.md)
+  - **Completed**: Created `SkillSpecTests` with 13 tests covering:
+    - Round-trip SKILL.md conversion
+    - Minimal skill parsing
+    - Skills without frontmatter
+    - JSON serialization/deserialization
+    - All field serialization
+    - Agent-specific validation (Codex, Claude)
+    - Name pattern validation (kebab-case for Claude)
+    - Semantic version validation
+    - Diff detection (metadata, sections, counts)
+    - ValidationError formatting
+
+### Story S2: Add Spec export/import CLI commands
+
+- [x] **Task 1**: Create SpecCommands.swift
+  - Spec reference: `.ralph/prd.json` story S2 acceptance criteria (lines 34-39)
+  - Files created: `Sources/skillsctl/Commands/SpecCommands.swift`
+  - Expected change: Add AsyncParsableCommand for spec export/import/diff
+  - **Completed**: Created SpecCommands with three subcommands:
+    - `Export`: Converts SKILL.md to JSON with optional validation
+    - `Import`: Converts JSON back to SKILL.md with optional validation
+    - `Diff`: Shows semantic differences between two specs (text or JSON output)
+    - Agent detection from path for context-aware validation
+
+- [x] **Task 2**: Add spec export command
+  - Spec reference: `.ralph/prd.json` story S2 acceptance (line 35)
   - Files modified: `Sources/skillsctl/main.swift`
-  - Expected change: CLI uses `PinnedTool.toolConfig()` when tool name is "clawdhub" and no explicit hash provided
-  - **Completed**: Updated `Publish.run()` to automatically use pinned configuration for clawdhub when no hash is explicitly provided.
+  - Expected change: `skillsctl spec export <skill> --output <file>`
+  - **Completed**: Export command with `--output`, `--format` (json|pretty), `--include-validation` flags
 
-- [x] **Task 3**: Add tests for pinned publishing functionality
-  - Spec reference: `.ralph/pin.md` section "Testing" (line 59)
-  - Files modified: `Tests/SkillsCoreTests/SkillsCoreTests.swift`
-  - Expected change: Add tests for pinned tool configuration, deterministic zips, tool hash validation, attestation, and dry-run
-  - **Completed**: Added 10 new tests covering pinned tool properties, deterministic zip output, tool hash validation (reject mismatch, accept correct, fail nonexistent), attestation with tool hash, and dry-run mode.
+- [x] **Task 3**: Add spec import command
+  - Spec reference: `.ralph/prd.json` story S2 acceptance (line 36)
+  - Expected change: `skillsctl spec import <file> --validate`
+  - **Completed**: Import command with `--output`, `--validate`, `--agent` flags
 
-### Story S4: Ledger + Changelog - Append-Only Log, Rollback
+- [x] **Task 4**: Add spec diff command
+  - Spec reference: `.ralph/prd.json` story S2 acceptance (line 37)
+  - Expected change: `skillsctl spec diff <file1> <file2>`
+  - **Completed**: Diff command with `--format` (text|json) flag, shows metadata/section changes
 
-- [x] **Task 1**: Add fetchLastSuccessfulInstall method to SkillLedger
-  - Spec reference: `prd.json` story S4 acceptance criteria (line 62)
-  - Files modified: `Sources/SkillsCore/Ledger/SkillLedger.swift`
-  - Expected change: Add method to query last successful install for rollback support
-  - **Completed**: Added `fetchLastSuccessfulInstall(skillSlug:agent:)` method (lines 218-281) that returns the most recent successful install/update event for a skill, with optional agent filter for per-IDE queries
+### Story S3: Implement ACIPScanner for prompt-injection detection
 
-- [x] **Task 2**: Add per-skill changelog generation to SkillChangelogGenerator
-  - Spec reference: `prd.json` story S4 acceptance criteria (line 61)
-  - Files modified: `Sources/SkillsCore/Ledger/SkillChangelogGenerator.swift`
-  - Expected change: Add methods for per-skill and filtered changelog generation
-  - **Completed**: Added `generatePerSkillMarkdown()` method (lines 39-49) for skill-specific changelogs and `generateFilteredMarkdown()` method (lines 51-72) with filtering by skill slug, event types, and date range
+- [x] **Task 1**: Create ACIPScanner actor
+  - Spec reference: `.ralph/prd.json` story S3 acceptance (lines 52-60)
+  - Files created: `Sources/SkillsCore/Security/ACIPScanner.swift`
+  - Expected change: Actor with scan(), TrustBoundary enum, InjectionPattern types
+  - **Completed**: Created ACIPScanner actor with:
+    - `TrustBoundary` enum (user, assistant, tool, file, remote, unknown)
+    - `InjectionPattern` struct with 7 built-in ACIP v1.3 patterns
+    - `QuarantineAction` enum (allow, quarantine, block)
+    - `ScanResult` struct with action, patterns, match count, matched lines
+    - `scan(content:source:contentID:)` method for single content
+    - `scanSkill(at:source:)` method for full directory scanning
+    - Swift 6 Sendable compliance (Regex stored as String, compiled on access)
 
-- [x] **Task 3**: Add comprehensive tests for ledger and changelog functionality
-  - Spec reference: `.ralph/pin.md` section "Unit tests" (line 85)
-  - Files modified: `Tests/SkillsCoreTests/SkillLedgerTests.swift`
-  - Expected change: Add tests for fetchLastSuccessfulInstall, per-skill changelog, append-only verification
-  - **Completed**: Added 7 new tests covering: most recent install retrieval, ignoring failures, agent filtering, per-skill changelog generation, event type filtering, append-only verification, and all operation types logging
+- [x] **Task 2**: Create SecurityConfig
+  - Spec reference: `.ralph/prd.json` story S3 acceptance (line 57)
+  - Files created: `Sources/SkillsCore/Security/SecurityConfig.swift`
+  - Expected change: Allowlist/blocklist management
+  - **Completed**: Created SecurityConfig with:
+    - `enabledPatterns` array for pattern filtering
+    - `allowlist` array of regex patterns to skip
+    - `blocklist` array of strings to block immediately
+    - `maxFileSize` limit (default 1MB)
+    - `scanReferences` and `scanCodeBlocks` booleans
+    - Preset configs: `.default`, `.permissive`, `.strict`
 
-### Story S5: Remote Detail Caching + Preview Panel
+- [x] **Task 3**: Create ACIPScanner tests
+  - Spec reference: `.ralph/prd.json` story S3 acceptance (line 59)
+  - Files created: `Tests/SkillsCoreTests/ACIPScannerTests.swift`
+  - Expected change: Unit tests for each injection pattern
+  - **Completed**: Created ACIPScannerTests with 15 tests covering:
+    - Clean content scanning
+    - All 7 injection patterns (ignore-previous, DAN, developer mode, role confusion, prompt leak, safety override, code injection)
+    - Allowlist and blocklist configuration
+    - Enabled patterns filtering
+    - Skill directory scanning
+    - Trust boundary handling
+    - Performance (1000 lines < 100ms)
+    - Quarantine action generation
+    - Critical pattern immediate blocking
+    - Matched line tracking
 
-- [x] **Task 1**: Add cache TTL and eviction policy to RemotePreviewCache
-  - Spec reference: `prd.json` story S5 acceptance criteria (lines 72-76)
-  - Files modified: `Sources/SkillsCore/Remote/RemotePreviewCache.swift`
-  - Expected change: Add 7-day TTL, 50MB size cap, and ETag-based validation
-  - **Completed**: Added TTL validation in `load()` and `loadManifest()` methods; added `ensureCacheSizeLimit()` for eviction; added `clearAll()` and `totalCacheSize()` utility methods
+### Story S4: Integrate ACIP scanning into remote skill installation
 
-- [x] **Task 2**: Add local/remote source toggle to RemoteView
-  - Spec reference: `prd.json` story S5 acceptance criteria (line 77)
-  - Files modified: `Sources/SkillsInspector/Remote/RemoteView.swift`
-  - Expected change: Add segmented control for switching between local and remote sources
-  - **Completed**: Added `RemoteSourceMode` enum with `.remote` and `.local` cases; added `Picker` control in sidebar toolbar; added `localSkillRow()` view for displaying local installed skills
+- [x] **Task 1**: Add security types to RemoteArtifactSecurity
+  - Spec reference: `.ralph/prd.json` story S4 acceptance (lines 75-81)
+  - Files modified: `Sources/SkillsCore/Remote/RemoteArtifactSecurity.swift`
+  - Expected change: SecurityCheckResult enum, integration types
+  - **Completed**: Added:
+    - `SecurityCheckResult` enum (clean, warning, quarantined, blocked)
+    - `QuarantineStore` actor with persistent storage
+    - `QuarantineItem` struct with pending/approved/rejected status
+    - Full CRUD operations (quarantine, approve, reject, list, get, remove, clear)
+    - JSON persistence to Application Support
 
-- [x] **Task 3**: Add comprehensive tests for cache functionality
-  - Spec reference: `.ralph/pin.md` section "Unit tests" (line 85)
-  - Files modified: `Tests/SkillsCoreTests/RemoteSkillClientTests.swift`
-  - Expected change: Add tests for TTL expiration, ETag validation, size limit eviction, cache clearing
-  - **Completed**: Added 8 new tests covering: store/load preview, TTL expiration, ETag validation, manifest TTL expiration, size limit eviction, clear all, total cache size calculation
+- [x] **Task 2**: Create QuarantineStore
+  - Spec reference: `.ralph/prd.json` story S4 acceptance (line 85)
+  - Files created: `Sources/SkillsCore/Remote/RemoteArtifactSecurity.swift`
+  - Expected change: Persistent store for quarantined skills
+  - **Completed**: Integrated QuarantineStore into RemoteArtifactSecurity.swift with:
+    - File-based persistence (quarantine.json)
+    - Actor isolation for thread safety
+    - Automatic load on first access
+    - Methods for approve/reject workflow
 
-### Story S6: Adapters MVP - Codex, Claude Code, GitHub Copilot
+### Story S6: Implement SkillSearchEngine with SQLite FTS5
 
-- [x] **Task 1**: Add post-install validation hooks to MultiTargetSkillInstaller
-  - Spec reference: `prd.json` story S6 acceptance criteria (line 90)
-  - Files modified: `Sources/SkillsCore/Adapters/MultiTargetSkillInstaller.swift`
-  - Expected change: Add `PostInstallValidator` protocol and `DefaultPostInstallValidator` implementation
-  - **Completed**: Added `PostInstallValidator` protocol with `validate(result:target:)` method; added `DefaultPostInstallValidator` that checks SKILL.md exists and is readable; validation runs after each target install with rollback on failure
+- [x] **Task 1**: Create SkillSearchEngine actor
+  - Spec reference: `.ralph/prd.json` story S6 acceptance (lines 116-125)
+  - Files created: `Sources/SkillsCore/Search/SkillSearchEngine.swift`
+  - Expected change: FTS5 virtual table schema, BM25 ranking
+  - **Completed**: Created SkillSearchEngine actor with:
+    - SQLite FTS5 virtual table for full-text search
+    - `indexSkill(_:content:)` method for adding skills to index
+    - `search(query:filters:limit:)` method with BM25 ranking
+    - `SearchFilter` struct (agent, rootPath, tags, minRank)
+    - `SearchResult` struct with highlighted snippets (<mark> tags)
+    - `removeSkill(at:)` for index maintenance
+    - `rebuildIndex(roots:)` for full reindexing
+    - `optimize()` for index compaction
+    - `getStats()` for index metrics
+    - Swift 6 Sendable compliance
 
-- [x] **Task 2**: Add comprehensive tests for post-install validation
-  - Spec reference: `.ralph/pin.md` section "Unit tests" (line 85)
-  - Files modified: `Tests/SkillsCoreTests/MultiTargetSkillInstallerTests.swift`
-  - Expected change: Add tests for default validator, custom validators, multi-target validation failure, all three targets
-  - **Completed**: Added 5 new tests covering: default validator passes/fails, custom validator with pass/fail scenarios, multi-target with validation failure triggering rollback, all three targets (Codex/Claude/Copilot) install successfully
+- [x] **Task 2**: Create SearchIndex helper
+  - Spec reference: `.ralph/prd.json` story S6 files (line 129)
+  - Files created: `Sources/SkillsCore/Search/SearchIndex.swift`
+  - Expected change: Index management utilities
+  - **Completed**: Created SearchIndex enum with:
+    - `defaultIndexURL(for:)` for agent-specific index locations
+    - `standardRootPaths()` for Codex/Claude/Copilot skill roots
+    - `scanRoots(_:)` for bulk skill discovery
+    - `scanRoot(_:)` for single root scanning
+    - Automatic SKILL.md detection and metadata extraction
 
-### Story S1: Trust Foundations - Manifest, TrustStore, Verifier, Sanitizer
+- [x] **Task 3**: Create SkillSearchEngine tests
+  - Spec reference: `.ralph/prd.json` story S6 acceptance (line 125)
+  - Files created: `Tests/SkillsCoreTests/SkillSearchEngineTests.swift`
+  - Expected change: Unit tests for indexing and search
+  - **Completed**: Created SkillSearchEngineTests with 15+ tests covering:
+    - Engine initialization and database creation
+    - Indexing single and multiple skills
+    - Skill updates and replacement
+    - Search with BM25 ranking and snippet generation
+    - Agent and rank filtering
+    - Skill removal from index
+    - Index rebuild and optimization
+    - Statistics tracking
+    - Performance tests (100 skills indexed efficiently)
 
-- [ ] **Task 1**: Create JSON schema for manifest validation
-  - Spec reference: `.ralph/pin.md` section "Configuration schemas" (line 84)
-  - Files to create: `docs/schema/manifest-schema.json`
-  - Expected change: Define JSON schema matching `RemoteArtifactManifest` fields
+### Story S7: Add search CLI commands and index management
 
-- [x] **Task 2**: Add persistence to RemoteTrustStore
-  - Spec reference: `.ralph/pin.md` section "Trust store" (line 83)
-  - Files to modify: `Sources/SkillsCore/Remote/RemoteArtifactSecurity.swift`
-  - Expected change: Add load/save methods for `~/Library/Application Support/SkillsInspector/trust.json`
-  - **Completed**: Added `load()` and `save()` methods to `RemoteTrustStore` with automatic directory creation
+- [x] **Task 1**: Create SearchCommands
+  - Spec reference: `.ralph/prd.json` story S7 acceptance (lines 140-148)
+  - Files created: `Sources/skillsctl/Commands/SearchCommands.swift`
+  - Expected change: CLI for searching skills
+  - **Completed**: Created SearchCommands with:
+    - `skillsctl search '<query>'` command with FTS5 query syntax
+    - `--agent` filter (codex|claude|copilot)
+    - `--minRank` filter for quality threshold
+    - `--limit` option for result count
+    - `--format` option (text|json)
+    - Text output with ANSI terminal highlighting for snippets
+    - JSON output for automation
+    - Integration with SkillSearchEngine
 
-- [ ] **Task 3**: Create JSON schema for manifest validation
-  - Spec reference: `.ralph/pin.md` section "Configuration schemas" (line 84)
-  - Files to create: `docs/schema/manifest-schema.json`
-  - Expected change: Define JSON schema matching `RemoteArtifactManifest` fields
-  - **NOTE**: JSONValidator already exists in `Sources/skillsctl/JSONValidator.swift`
+- [x] **Task 2**: Create SearchIndexCmd (renamed from IndexCommands to avoid conflict)
+  - Spec reference: `.ralph/prd.json` story S7 acceptance (lines 141-143)
+  - Files created: `Sources/skillsctl/Commands/IndexCommands.swift`
+  - Expected change: CLI for index management
+  - **Completed**: Created SearchIndexCmd with subcommands:
+    - `skillsctl index build` - Creates initial index from skill roots
+    - `skillsctl index rebuild --force` - Clears and rebuilds index
+    - `skillsctl index optimize` - Compacts FTS5 index
+    - `skillsctl index stats` - Shows index size and skill count
+    - `--roots` option for custom skill paths
+    - `--verbose` flag for detailed output
+    - `--format` option (text|json) for stats
+    - Added Search and SearchIndexCmd to main.swift subcommands
 
-- [x] **Task 4**: Add comprehensive security tests
-  - Spec reference: `.ralph/pin.md` section "Unit tests" (line 85)
-  - Files to modify: `Tests/SkillsCoreTests/RemoteSkillInstallerTests.swift`
-  - Expected change: Add tests for zip-bomb fixtures, path traversal, revoked keys
-  - **Completed**: Added tests for revoked keys, oversized archives, manifest fields, trust store scope, verification limits
+### Story S5: Add QuarantineReviewView to sTools app
 
-### Story S7: Telemetry Stub + Privacy Notice
+- [x] **Task 1**: Create QuarantineReviewView
+  - Spec reference: `.ralph/prd.json` story S5 acceptance (lines 96-102)
+  - Files created: `Sources/SkillsInspector/Security/QuarantineReviewView.swift`
+  - Expected change: SwiftUI view for reviewing quarantined skills
+  - **Completed**: Created QuarantineReviewView with:
+    - NavigationSplitView with sidebar and detail panel
+    - List of quarantined skills with severity-coded icons (low/medium/high/critical)
+    - Context snippets showing matched patterns in code blocks
+    - Approve/deny buttons with confirmation
+    - Integration with QuarantineStore for CRUD operations
+    - Status badges (pending/approved/rejected)
+    - Empty states for no quarantined items
+    - SwiftUI preview with sample data
+    - Added Hashable conformance to QuarantineItem and Status
 
-- [x] **Task 1**: Enhance TelemetryClient with event types, retention, and counts
-  - Spec reference: `prd.json` story S7 acceptance criteria (lines 101-108)
-  - Files modified: `Sources/SkillsCore/Telemetry/TelemetryClient.swift`
-  - Expected change: Add TelemetryEventType enum, TelemetryStore with retention, TelemetryCounts, InstallerId, PathRedactor
-  - **Completed**: Added `TelemetryEventType` enum (verified_install, blocked_download, publish_run), `TelemetryStore` with 30-day retention, `TelemetryCounts` for aggregating events, `InstallerId` for anonymized install ID, `PathRedactor` for redacting sensitive info
+- [x] **Task 2**: Create SecuritySettingsView
+  - Spec reference: `.ralph/prd.json` story S5 files (line 106)
+  - Files created: `Sources/SkillsInspector/Security/SecuritySettingsView.swift`
+  - Expected change: Security settings UI
+  - **Completed**: Created SecuritySettingsView with:
+    - Security level presets (default/permissive/strict)
+    - ACIP scanner configuration (code blocks, references, max file size)
+    - Pattern configuration with all 7 ACIP v1.3 patterns
+    - Allowlist/blocklist management UI
+    - Quarantine statistics and review link
+    - Severity icons for each pattern type
+    - Toggle controls for enabling/disabling patterns
+    - SwiftUI preview
+    - Integration with SecurityConfig and QuarantineStore
 
-- [x] **Task 2**: Add Privacy tab to SettingsView with telemetry opt-in and notice
-  - Spec reference: `prd.json` story S7 acceptance criteria (lines 104-107)
-  - Files modified: `Sources/SkillsInspector/SettingsView.swift`
-  - Expected change: Add Privacy tab with telemetry toggle, privacy notice alert, detailed privacy sheet
-  - **Completed**: Added `PrivacyTabView` with telemetry opt-in toggle, `PrivacyNoticeSheet` with detailed privacy information, privacy alert confirmation
+### Story S8: Add SearchView to sTools app
 
-- [x] **Task 3**: Update FeatureFlags to read telemetry opt-in from UserDefaults
-  - Spec reference: `prd.json` story S7 acceptance criteria (line 101)
-  - Files modified: `Sources/SkillsCore/FeatureFlags.swift`
-  - Expected change: Update `fromEnvironment()` to check UserDefaults for telemetryOptIn
-  - **Completed**: Added `optionalBool()` helper method, `fromEnvironment()` now checks UserDefaults for "telemetryOptIn" key when env var is not set
+- [x] **Task 1**: Create SearchView
+  - Spec reference: `.ralph/prd.json` story S8 acceptance (lines 163-171)
+  - Files created: `Sources/SkillsInspector/Search/SearchView.swift`
+  - Expected change: SwiftUI search interface
+  - **Completed**: Created SearchView with:
+    - NavigationSplitView with sidebar and detail panel
+    - Real-time search with 300ms debouncing
+    - Search bar with magnifying glass icon
+    - Agent filter (All/Codex/Claude/Copilot)
+    - Limit selector (10/20/50/100 results)
+    - Statistics sheet showing index size and skill count
+    - Empty states for initial state and no results
+    - Loading state during search
+    - Result list with selection support
+    - Detail panel with matched content highlighting
+    - Show in Finder and Copy Path context menu actions
+    - SwiftUI preview
+    - Added public initializer to SkillSearchEngine.SearchResult
 
-- [x] **Task 4**: Add comprehensive tests for telemetry functionality
-  - Spec reference: `.ralph/pin.md` section "Unit tests" (line 85)
-  - Files modified: `Tests/SkillsCoreTests/SkillsCoreTests.swift`
-  - Expected change: Add tests for telemetry events, store persistence, retention, counts, installer ID, path redaction
-  - **Completed**: Added 11 new tests covering: event creation (verified install, blocked download, publish run), file persistence, old data cleanup, store clearing, counts calculation, installer ID persistence, path redaction (home, username, UUID), Codable round-trip
+- [x] **Task 2**: Create SearchResultRow
+  - Spec reference: `.ralph/prd.json` story S8 files (line 175)
+  - Files created: `Sources/SkillsInspector/Search/SearchResultRow.swift`
+  - Expected change: Search result row component
+  - **Completed**: Created SearchResultRow with:
+    - Skill name and agent badge with icons
+    - BM25 score display with color coding (green/yellow/orange)
+    - Highlighted snippet with <mark> tag parsing
+    - AttributedString for highlighted terms
+    - Agent-specific icons and colors (Codex=cube.blue, Claude=sparkles.purple, Copilot=brain.green)
+    - Context menu (Open in Finder, Copy Path, Show Info)
+    - Rounded background with border
+    - SwiftUI preview with sample data
+    - NSWorkspace.open() for Finder integration
 
-### Story S8: Skill Maintainer - Pinned Reproducible Publishing
+### Story S9: Implement SkillLifecycleCoordinator for workflow orchestration
 
-- [x] **Story S8 completed** - Verified existing S3 implementation satisfies all S8 acceptance criteria:
-  - Publish command respects pinned tool version from config (main.swift:413-415, PinnedTool.toolConfig())
-  - Build metadata includes tool version, hash, timestamp (PublishAttestation.swift:8-10)
-  - Deterministic output verified via hash comparison (testDeterministicZipProducesSameHash)
-  - Attestation file includes all build inputs (PublishAttestation includes skillName, version, artifactSHA256, toolName, toolHash, builtAt)
-  - All tests passing: testPinnedToolHasCorrectVersion, testPinnedToolHasCorrectIntegrityHash, testPinnedToolHasCorrectName, testPinnedToolCreatesValidToolConfig, testDeterministicZipProducesSameHash, testToolValidationRejectsMismatchedHash, testToolValidationAcceptsCorrectHash, testToolValidationFailsForNonexistentFile, testAttestationContainsToolHash, testDryRunDoesNotInvokeTool
+- [x] **Task 1**: Create SkillLifecycleCoordinator actor
+  - Spec reference: `.ralph/prd.json` story S9 acceptance (lines 185-195)
+  - Files created: `Sources/SkillsCore/Workflow/SkillLifecycleCoordinator.swift`
+  - Expected change: Workflow state machine
+  - **Completed**: Created SkillLifecycleCoordinator actor with:
+    - `createSkill()` for creating new skills with SKILL.md template
+    - `validateSkill()` for running ACIP scans and spec validation
+    - `approve()` for transitioning to approved stage
+    - `publish()` for version bumping and search index updates
+    - `syncAcrossAgents()` for multi-target skill synchronization
+    - `getWorkflowState()` and `listWorkflows()` for querying
+    - WorkflowError enum with descriptive error types
+    - Stage.canApprove extension for transition validation
+    - SkillSpec.ValidationError → WorkflowValidationError conversion
+    - Full Swift 6 async/await support with proper actor isolation
 
-### Story S10: Evaluator - Safe Preview Without Disk Write
+- [x] **Task 2**: Create WorkflowState types
+  - Spec reference: `.ralph/prd.json` story S9 files (line 199)
+  - Files created: `Sources/SkillsCore/Workflow/WorkflowState.swift`
+  - Expected change: Stage enum, WorkflowState struct
+  - **Completed**: Created WorkflowState types with:
+    - `Stage` enum with 6 stages (draft→validating→reviewed→approved→published→archived)
+    - Display names and SF Symbol icons for each stage
+    - `nextStage`/`previousStage` computed properties for navigation
+    - `isEditable` property to control modification permissions
+    - `WorkflowState` struct with validation results, review notes, version history
+    - `VersionEntry` struct for tracking workflow transitions
+    - `WorkflowValidationError` struct with Severity enum (error/warning/info)
+    - State transition methods with automatic version entry creation
+    - Validation state checking (isValid, errorCount, warningCount)
 
-- [x] **Story S10 completed** - Verified existing S2 implementation satisfies all S10 acceptance criteria:
-  - Preview API fetches SKILL.md content without downloading archive (RemoteSkillClient.fetchPreview at lines 100-123)
-  - Preview labeled "Safe preview from server" in UI (RemoteView.swift:445)
-  - No files written to disk until user clicks "Download and verify" (fetchPreview only fetches JSON metadata; disk write happens in RemoteViewModel.install() via client.download())
-  - Preview shown in detail side-panel (RemoteView.swift:459-484 with MarkdownPreviewView)
-  - RemotePreviewCache provides TTL-based caching and ETag validation for preview content
-  - Test coverage: testCacheStoresAndLoadsPreview, testCacheExpiresAfterTTL, testCacheValidatesAgainstETag
+- [x] **Task 3**: Create WorkflowStateStore
+  - Spec reference: `.ralph/prd.json` story S9 files (line 200)
+  - Files created: `Sources/SkillsCore/Workflow/WorkflowStateStore.swift`
+  - Expected change: Persistent state storage
+  - **Completed**: Created WorkflowStateStore actor with:
+    - In-memory state dictionary with JSON persistence
+    - Automatic loading from Application Support directory
+    - CRUD operations (create, get, update, delete)
+    - Filtering by stage and agent
+    - Clear all method for reset
+    - Deferred loading on first access
+    - Sorted listing by updatedAt timestamp
 
-## Completed Items
+- [x] **Task 4**: Create Workflow tests
+  - Spec reference: `.ralph/prd.json` story S9 acceptance (line 196)
+  - Files created: `Tests/SkillsCoreTests/WorkflowTests.swift`
+  - Expected change: Tests for stage transitions
+  - **Completed**: Created WorkflowTests with 20+ tests covering:
+    - Stage display names, icons, transitions, editability, canApprove
+    - WorkflowState initialization, validation results, state transitions
+    - WorkflowValidationError with severity and location
+    - WorkflowStateStore CRUD operations and filtering
+    - SkillLifecycleCoordinator create, validate, approve, publish workflows
+    - Invalid transition error handling
+    - VersionEntry initialization and unique IDs
 
-### 2025-01-13 - Story S4: Ledger + Changelog - Append-Only Log, Rollback
+### Story S10: Add workflow CLI commands
 
-**Task 1 - fetchLastSuccessfulInstall Method**
-- Added `fetchLastSuccessfulInstall(skillSlug:agent:)` to `SkillLedger` (lines 218-281)
-- Queries ledger for most recent successful install/update for a specific skill
-- Optional agent filter for per-IDE queries (Codex, Claude, Copilot)
-- Returns `LedgerEvent?` with version, hash, signer, and target path for rollback
-- SQL query filters by skill_slug, event_type (install/update), and status (success)
-- Used to identify last-known-good version for rollback on failed updates
+- [x] **Task 1**: Create WorkflowCommands
+  - Spec reference: `.ralph/prd.json` story S10 acceptance (lines 211-221)
+  - Files created: `Sources/skillsctl/Commands/WorkflowCommands.swift`
+  - Expected change: CLI for workflow operations
+  - **Completed**: Created WorkflowCommands with 9 subcommands:
+    - `create`: Create new skills from templates with --template, --agent, --author options
+    - `validate`: Run validation and advance workflow with ACIP scanning
+    - `review`: Submit skill for review with optional notes
+    - `approve`: Approve skill for publication with reviewer info
+    - `publish`: Publish skill with version bump and search index update
+    - `sync`: Sync skills across multiple agent targets (Codex/Claude/Copilot)
+    - `status`: Show workflow status with validation results and history
+    - `list`: List skills by stage or agent with text/JSON output
+    - `dashboard`: Overview of all workflows with statistics and recent activity
+    - Agent auto-detection from path or explicit --agent option
+    - Template listing with `--list-templates` flag
+    - Added LocalizedError conformance to WorkflowValidationError for CLI error handling
 
-**Task 2 - Per-Skill Changelog Generation**
-- Added `generatePerSkillMarkdown(events:skillSlug:skillName:title:)` to `SkillChangelogGenerator` (lines 39-49)
-- Filters events by skill slug and generates skill-specific changelog
-- Added `generateFilteredMarkdown(events:skillSlug:eventTypes:dateRange:title:)` (lines 51-72)
-- Supports filtering by skill slug, event types, and date range
-- Enables audit trails per-skill with flexible filtering options
+- [x] **Task 2**: Create SkillTemplate
+  - Spec reference: `.ralph/prd.json` story S10 files (line 225)
+  - Files created: `Sources/SkillsCore/Workflow/SkillTemplate.swift`
+  - Expected change: Skill creation templates
+  - **Completed**: Created SkillTemplate system with:
+    - `SkillTemplate` struct with name, description, category, defaultAgent
+    - `TemplateCategory` enum (automation, analysis, development, security, testing, documentation, utility)
+    - `TemplateMetadata` struct for dependencies, tags, minAgentVersion, exampleUsage
+    - `TemplateSection` struct for markdown content with heading levels
+    - `render()` method to generate skill markdown from template
+    - 5 built-in templates: automation, analysis, development, security, testing
+    - Each template includes relevant sections (overview, usage, configuration, examples)
+    - Category-specific SF Symbol icons for UI
+    - Template discovery with `find(named:)` and `builtInTemplates()`
+    - Added to main.swift subcommands as WorkflowCommand
 
-**Task 3 - Comprehensive Test Coverage**
-- Added 7 new tests to `SkillLedgerTests` (lines 60-317)
-- `testFetchLastSuccessfulInstallReturnsMostRecent()` - Verifies most recent successful install is returned
-- `testFetchLastSuccessfulInstallIgnoresFailures()` - Verifies failed updates are skipped
-- `testFetchLastSuccessfulInstallWithAgentFilter()` - Verifies per-agent filtering
-- `testChangelogGeneratorPerSkillFilter()` - Verifies per-skill changelog generation
-- `testChangelogGeneratorFilteredByEventType()` - Verifies event type filtering
-- `testLedgerIsAppendOnly()` - Verifies no deletions, events in descending order
-- `testLedgerRecordsAllOperationTypes()` - Verifies all event types are logged
+### Story S11: Add WorkflowDashboardView to sTools app
 
-**Note**: All acceptance criteria verified:
-1. ✅ SQLite ledger schema with all required fields (already existed)
-2. ✅ Ledger is append-only (no DELETE operations, test verifies ordering)
-3. ✅ Per-skill changelog generation (generatePerSkillMarkdown method)
-4. ✅ Rollback support (fetchLastSuccessfulInstall returns last-known-good version)
-5. ✅ All install/update/remove operations logged (verified in RemoteViewModel)
+- [ ] **Task 1**: Create WorkflowDashboardView
+  - Spec reference: `.ralph/prd.json` story S11 acceptance (lines 236-243)
+  - Files to create: `Sources/SkillsInspector/Workflow/WorkflowDashboardView.swift`
+  - Expected change: Dashboard with stage picker
 
-### 2025-01-13 - Story S1: Trust Foundations
+- [ ] **Task 2**: Create WorkflowDetailView
+  - Spec reference: `.ralph/prd.json` story S11 files (line 247)
+  - Files to create: `Sources/SkillsInspector/Workflow/WorkflowDetailView.swift`
+  - Expected change: Drill-down detail view
 
-**Task 2 - RemoteTrustStore Persistence**
-- Added `load()` static method to load trust store from `~/Library/Application Support/SkillsInspector/trust.json`
-- Added `save()` instance method to persist trust store to disk
-- Automatic directory creation for Application Support path
-- Graceful fallback to ephemeral store on load failure
-- Internal `TrustStoreFile` struct for JSON serialization
+- [ ] **Task 3**: Create WorkflowRow component
+  - Spec reference: `.ralph/prd.json` story S11 files (line 248)
+  - Files to create: `Sources/SkillsInspector/Workflow/WorkflowRow.swift`
+  - Expected change: Row component for workflow list
 
-**Task 4 - Comprehensive Security Tests**
-- `testRevokedKeyIsRejected()` - Verifies that keys in `revokedKeys` list are rejected
-- `testOversizedArchiveIsRejected()` - Verifies archive size limit enforcement
-- `testManifestWithoutRequiredFields()` - Tests manifest creation with minimal fields
-- `testTrustStorePersistence()` - Tests trust store key lookup and scope restriction
-- `testRemoteVerificationLimitsDefaults()` - Verifies default security limits (50MB, 2000 files)
-- `testVerificationOutcomeHasCorrectMode()` - Tests verification outcome structure
+- [ ] **Task 4**: Create WorkflowProgressIndicator
+  - Spec reference: `.ralph/prd.json` story S11 files (line 249)
+  - Files to create: `Sources/SkillsInspector/Workflow/WorkflowProgressIndicator.swift`
+  - Expected change: Visual progress indicator
 
-**Note**: Task 1 (JSON schema file) requires manual file creation as Edit tool cannot create new non-existent files.
+### Story S12: Add comprehensive integration tests
 
-### 2025-01-14 - Story S12: Auditor - Signed Changelog of Installs/Updates
+- [ ] **Task 1**: Create integration test suite
+  - Spec reference: `.ralph/prd.json` story S12 acceptance (lines 259-268)
+  - Files to create: `Tests/SkillsCoreTests/IntegrationTests.swift`
+  - Expected change: End-to-end workflow tests
 
-**Enhancement 1 - Auditor-Focused Changelog Generator**
-- Added `generateAuditorMarkdown()` method to `SkillChangelogGenerator` (lines 39-71)
-- Includes ALL events (success and failure) unlike app store changelog which only shows successes
-- Adds tamper-evident language: "cryptographically verifiable" header
-- Groups events by date with reverse chronological ordering
+### Story S13: Update documentation and README
 
-**Enhancement 2 - Cryptographic Provenance Display**
-- Added `formatAuditorEvent()` helper method (lines 131-171)
-- Shows status indicators: ✓ for success, ✗ for failure
-- Displays signer key ID (or *(unsigned)* for unsigned items)
-- Shows SHA256 hash prefix (first 16 chars) for quick verification
-- Formats with markdown code blocks for machine-readable extraction
+- [ ] **Task 1**: Update README.md
+  - Spec reference: `.ralph/prd.json` story S13 acceptance (lines 281-288)
+  - Files to modify: `README.md`
+  - Expected change: Document new CLI commands and architecture
 
-**Enhancement 3 - Filtered Auditor Changelogs**
-- Added `generateFilteredAuditorMarkdown()` method (lines 109-123) with filters for:
-  - `skillSlug`: Per-skill audit trails
-  - `eventTypes`: Filter by action type (install/update/remove/verify/sync)
-  - `dateRange`: Date range filtering
-- Added `generatePerSkillAuditorMarkdown()` (lines 125-132) for skill-specific audit trails
+- [ ] **Task 2**: Update AGENTS.md
+  - Spec reference: `.ralph/prd.json` story S13 files (line 292)
+  - Files to modify: `.ralph/AGENTS.md`
+  - Expected change: Update with integration features
 
-**Enhancement 4 - Comprehensive Test Coverage**
-- Added 8 new tests to `SkillLedgerTests.swift` (lines 321-500+):
-  1. `testAuditorChangelogIncludesFailures()` - Verifies failures are shown
-  2. `testAuditorChangelogIncludesSignerProvenance()` - Verifies signer keys and hashes shown
-  3. `testAuditorChangelogPerSkillFilter()` - Per-skill filtering
-  4. `testAuditorChangelogFilteredByEventType()` - Event type filtering
-  5. `testAuditorChangelogFilteredByDateRange()` - Date range filtering
-  6. `testAuditorChangelogIsTamperEvident()` - Verifies tamper-evident language
-  7. `testLedgerRecordsCryptographicFields()` - Verifies SHA256 and signerKeyId are persisted
-
-**Acceptance Criteria Verification:**
-1. ✅ Ledger records all installs/updates/removals with version, hash, signer key - Already existed in `SkillLedger.swift:70-133` with `signerKeyId` and `manifestSHA256` fields
-2. ✅ Markdown changelog export includes all ledger entries - `generateAuditorMarkdown()` includes all events (not filtered by status)
-3. ✅ Export includes signer provenance for each entry - `formatAuditorEvent()` displays `signerKeyId` and `manifestSHA256` for each entry
-4. ✅ Changelog can be filtered by skill, date range, action type - `generateFilteredAuditorMarkdown()` and `generatePerSkillAuditorMarkdown()` support all three filters
-5. ✅ Audit trail is tamper-evident (append-only) - SQLite ledger uses AUTOINCREMENT id, no DELETE operations exist, verified by `testLedgerIsAppendOnly()`
-
-**Files Modified:**
-- `Sources/SkillsCore/Ledger/SkillChangelogGenerator.swift` - Added 3 new public methods and 1 private helper
-- `Tests/SkillsCoreTests/SkillLedgerTests.swift` - Added 8 new tests
-- `prd.json` - Updated S12 `passes: true`
-
-### 2025-01-13 - Story S2: Consentful Preview - Safe Preview API, Download Gate
-
-**Consentful Preview Implementation**
-- Added "Safe preview from server" label in `Sources/SkillsInspector/Remote/RemoteView.swift` (lines 332-341)
-- Changed button text from "Download & Install" to "Download and verify" (line 290)
-- Added pre-download size validation in `Sources/SkillsInspector/Remote/RemoteViewModel.swift`:
-  - `install(slug:version:)` method (lines 210-224)
-  - `installToAllTargets(skill:)` method (lines 143-153)
-- Size validation checks manifest's declared size against `RemoteVerificationLimits.default.maxArchiveBytes` (50MB)
-- Telemetry event recorded when download is blocked due to size limits
-- All acceptance criteria verified:
-  1. ✅ Preview API fetches metadata without writing SKILL.md (existing `fetchPreview` method)
-  2. ✅ "Safe preview from server" label added to UI
-  3. ✅ "Download and verify" CTA with progress indication (existing `ProgressView`)
-  4. ✅ Failure reasons displayed (existing `errorMessage` handling)
-  5. ✅ Provenance badges with verified/unknown/failing status (existing implementation)
-  6. ✅ Trust prompt with per-skill cache (existing `allowedSlugs` support)
-  7. ✅ Size limits enforced before download (NEW pre-download validation)
+- [ ] **Task 3**: Add DocC comments
+  - Spec reference: `.ralph/prd.json` story S13 acceptance (line 285)
+  - Files to modify: All Spec/, Security/, Search/, Workflow/ files
+  - Expected change: Comprehensive documentation
 
 ## Notes
 
 - Keep items atomic—one clear change per item
 - If an item seems too large, break it down
-- Cross-reference `.ralph/pin.md` sections for context
+- Cross-reference `.ralph/prd.json` sections for context
+- Story S1 is foundation for all other integration features

@@ -46,3 +46,8 @@ Icon?
 
 # Keep Package.resolved for dependency locking
 # Keep Icon.icns and Icon.png as they appear to be project assets
+
+# Ralph runtime state (keep config files, ignore logs/state)
+.ralph/logs/
+.ralph/state.json
+.ralph/prompt-*.txt

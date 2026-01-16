@@ -6,7 +6,7 @@ struct SkillsCtl: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "skillsctl",
         abstract: "Scan/validate/sync Codex + Claude SKILL.md directories.",
-        subcommands: [Scan.self, Fix.self, SyncCheck.self, Index.self, Remote.self, Publish.self, Completion.self]
+        subcommands: [Scan.self, Fix.self, SyncCheck.self, Index.self, Search.self, SearchIndexCmd.self, Remote.self, Publish.self, Spec.self, WorkflowCommand.self, Completion.self]
     )
 }
 

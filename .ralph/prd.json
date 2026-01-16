@@ -1,0 +1,302 @@
+{
+  "project": "stools-meta-skill-integration",
+  "branchName": "feature/meta-skill-integration",
+  "stories": [
+    {
+      "id": "S1",
+      "priority": 1,
+      "title": "Create Spec module with SkillSpec type",
+      "description": "Add Sources/SkillsCore/Spec/ directory with structured skill specification type that enables deterministic SKILL.md ↔ JSON round-trip conversion.",
+      "acceptance": [
+        "SkillSpec.swift type with Metadata, Section, and ValidationError types",
+        "parse() method converts SKILL.md to SkillSpec",
+        "toMarkdown() method converts SkillSpec back to SKILL.md",
+        "toJSON() and fromJSON() for serialization",
+        "validate(for:) method for agent-specific validation",
+        "diff(_:) method for semantic comparison",
+        "Unit tests for round-trip conversion (SKILL.md → Spec → SKILL.md)",
+        "Integration with existing SkillLoader via loadSpec() method"
+      ],
+      "files": [
+        "Sources/SkillsCore/Spec/SkillSpec.swift",
+        "Sources/SkillsCore/Spec/SectionParser.swift",
+        "Sources/SkillsCore/Spec/SpecValidator.swift",
+        "Tests/SkillsCoreTests/SkillSpecTests.swift"
+      ],
+      "passes": false,
+      "notes": "Foundation for all other integration features. Implement first."
+    },
+    {
+      "id": "S2",
+      "priority": 1,
+      "title": "Add Spec export/import CLI commands",
+      "description": "Extend skillsctl CLI with commands to export skills as JSON specs and import specs back to SKILL.md format.",
+      "acceptance": [
+        "skillsctl spec export <skill> --output <file> exports SkillSpec as JSON",
+        "skillsctl spec import <file> --validate imports and validates spec",
+        "skillsctl spec diff <file1> <file2> shows semantic diff between specs",
+        "JSON output (--robot flag) for automation",
+        "Error handling for invalid specs and missing files"
+      ],
+      "files": [
+        "Sources/skillsctl/Commands/SpecCommands.swift"
+      ],
+      "passes": false,
+      "notes": "Depends on S1. Add new AsyncParsableCommand to skillsctl."
+    },
+    {
+      "id": "S3",
+      "priority": 2,
+      "title": "Implement ACIPScanner for prompt-injection detection",
+      "description": "Add Sources/SkillsCore/Security/ directory with ACIP v1.3 compatible scanner that detects and quarantines malicious content patterns.",
+      "acceptance": [
+        "ACIPScanner actor with scan(content:source:contentID:) method",
+        "TrustBoundary enum (user/assistant/tool/file/remote/unknown)",
+        "InjectionPattern type with 7+ built-in patterns (ignore-previous, jailbreak, etc.)",
+        "QuarantineAction with safe excerpt generation",
+        "SecurityConfig for allowlist/blocklist management",
+        "scanSkill(at:source:) method for full skill directory scanning",
+        "Unit tests for each injection pattern",
+        "Performance: scan 1000-line skill in <100ms"
+      ],
+      "files": [
+        "Sources/SkillsCore/Security/ACIPScanner.swift",
+        "Sources/SkillsCore/Security/SecurityConfig.swift",
+        "Tests/SkillsCoreTests/ACIPScannerTests.swift"
+      ],
+      "passes": false,
+      "notes": "Standalone security module, no external dependencies."
+    },
+    {
+      "id": "S4",
+      "priority": 2,
+      "title": "Integrate ACIP scanning into remote skill installation",
+      "description": "Hook ACIPScanner into RemoteSkillInstaller to scan downloaded skills before installation, with quarantine review flow.",
+      "acceptance": [
+        "scanDownloadedSkill(at:) method in RemoteSkillInstaller",
+        "SecurityCheckResult enum (clean/warning/quarantined/blocked)",
+        "Integration with RemoteVerificationPolicy",
+        "CLI: skillsctl security scan <skill-path>",
+        "CLI: skillsctl quarantine list/approve/block <id>",
+        "Unit tests for security check flow"
+      ],
+      "files": [
+        "Sources/SkillsCore/Remote/RemoteSkillInstaller.swift",
+        "Sources/SkillsCore/Security/QuarantineStore.swift",
+        "Sources/SkillsCore/Remote/RemoteVerificationPolicy.swift"
+      ],
+      "passes": false,
+      "notes": "Depends on S3. Enhances existing remote install flow."
+    },
+    {
+      "id": "S5",
+      "priority": 2,
+      "title": "Add QuarantineReviewView to sTools app",
+      "description": "Create SwiftUI view for reviewing quarantined skills with finding details and approve/deny actions.",
+      "acceptance": [
+        "QuarantineReviewView with scan results display",
+        "Severity-coded icons (low/medium/high/critical)",
+        "Context snippets showing matched patterns",
+        "Approve/deny buttons with confirmation",
+        "Integration with existing RemoteView workflow",
+        "SwiftUI preview with sample quarantine data"
+      ],
+      "files": [
+        "Sources/SkillsInspector/Security/QuarantineReviewView.swift",
+        "Sources/SkillsInspector/Security/SecuritySettingsView.swift"
+      ],
+      "passes": false,
+      "notes": "Depends on S4. UI component for security features."
+    },
+    {
+      "id": "S6",
+      "priority": 3,
+      "title": "Implement SkillSearchEngine with SQLite FTS5",
+      "description": "Add Sources/SkillsCore/Search/ directory with SQLite FTS5-based full-text search engine for O(log n) skill discovery.",
+      "acceptance": [
+        "SkillSearchEngine actor with FTS5 virtual table schema",
+        "indexSkill(_:content:) method for adding skills to index",
+        "search(query:filters:limit:) method with BM25 ranking",
+        "SearchFilter with agent/rootPath/tags/minRank options",
+        "removeSkill(at:) for index maintenance",
+        "rebuildIndex(roots:) for full reindexing",
+        "optimize() for index compaction",
+        "getStats() for index metrics",
+        "Unit tests for indexing and search accuracy"
+      ],
+      "files": [
+        "Sources/SkillsCore/Search/SkillSearchEngine.swift",
+        "Sources/SkillsCore/Search/SearchIndex.swift",
+        "Tests/SkillsCoreTests/SkillSearchEngineTests.swift"
+      ],
+      "passes": false,
+      "notes": "Uses existing sqlite3 linkage. Core search infrastructure."
+    },
+    {
+      "id": "S7",
+      "priority": 3,
+      "title": "Add search CLI commands and index management",
+      "description": "Extend skillsctl with index build/rebuild/optimize and full-text search commands.",
+      "acceptance": [
+        "skillsctl index build creates initial FTS5 index",
+        "skillsctl index rebuild --force clears and rebuilds index",
+        "skillsctl index optimize compacts FTS5 index",
+        "skillsctl index stats shows index size and skill count",
+        "skillsctl search '<query>' searches with BM25 ranking",
+        "skillsctl search --agent <agent> filters by platform",
+        "skillsctl search --limit <n> controls result count",
+        "Snippet generation with <mark> tags",
+        "Performance: search 1000 skills in <50ms"
+      ],
+      "files": [
+        "Sources/skillsctl/Commands/SearchCommands.swift",
+        "Sources/skillsctl/Commands/IndexCommands.swift"
+      ],
+      "passes": false,
+      "notes": "Depends on S6. Adds CLI interface to search engine."
+    },
+    {
+      "id": "S8",
+      "priority": 3,
+      "title": "Add SearchView to sTools app",
+      "description": "Create SwiftUI search interface with real-time search, results display, and skill preview.",
+      "acceptance": [
+        "SearchView with search bar and results list",
+        "Real-time search with debouncing (300ms)",
+        "SearchResultRow with BM25 score and highlighted snippet",
+        "Filter by agent (Codex/Claude/Copilot)",
+        "Open skill in editor on double-click",
+        "Show in Finder context menu item",
+        "Empty states for no results and initial state",
+        "SwiftUI preview with sample search results"
+      ],
+      "files": [
+        "Sources/SkillsInspector/Search/SearchView.swift",
+        "Sources/SkillsInspector/Search/SearchResultRow.swift"
+      ],
+      "passes": false,
+      "notes": "Depends on S7. UI component for search features."
+    },
+    {
+      "id": "S9",
+      "priority": 4,
+      "title": "Implement SkillLifecycleCoordinator for workflow orchestration",
+      "description": "Add Sources/SkillsCore/Workflow/ directory with skill lifecycle state machine and coordinator.",
+      "acceptance": [
+        "SkillLifecycleCoordinator actor with workflow methods",
+        "Stage enum (draft/validating/reviewed/approved/published/archived)",
+        "WorkflowState with validation results, review notes, version history",
+        "createSkill(name:description:agent:in:) for skill creation",
+        "validateSkill(at:agent:rootURL:) for validation stage",
+        "approve(at:reviewer:notes:) for approval stage",
+        "publish(at:changelog:) for publication",
+        "syncAcrossAgents(at:targets:) for cross-platform sync",
+        "WorkflowStateStore for persistent state",
+        "Unit tests for stage transitions and validation"
+      ],
+      "files": [
+        "Sources/SkillsCore/Workflow/SkillLifecycleCoordinator.swift",
+        "Sources/SkillsCore/Workflow/WorkflowState.swift",
+        "Sources/SkillsCore/Workflow/WorkflowStateStore.swift",
+        "Tests/SkillsCoreTests/WorkflowTests.swift"
+      ],
+      "passes": false,
+      "notes": "Orchestrates all other features. Complex, implement last."
+    },
+    {
+      "id": "S10",
+      "priority": 4,
+      "title": "Add workflow CLI commands",
+      "description": "Extend skillsctl with commands for skill creation, validation, review, approval, and publication.",
+      "acceptance": [
+        "skillsctl workflow create <name> --description <text> creates skill from template",
+        "skillsctl workflow validate <skill> validates and advances workflow",
+        "skillsctl workflow review <skill> --notes <text> submits for review",
+        "skillsctl workflow approve <skill> --reviewer <name> approves skill",
+        "skillsctl workflow publish <skill> --changelog <text> publishes to remote",
+        "skillsctl workflow sync <skill> --targets <agents> syncs across platforms",
+        "skillsctl workflow status <skill> shows current workflow state",
+        "skillsctl workflow list --stage <stage> lists skills at stage",
+        "skillsctl workflow dashboard shows overview of all workflows",
+        "Integration with SkillSpec, ACIPScanner, and SkillSearchEngine"
+      ],
+      "files": [
+        "Sources/skillsctl/Commands/WorkflowCommands.swift",
+        "Sources/SkillsCore/Workflow/SkillTemplate.swift"
+      ],
+      "passes": false,
+      "notes": "Depends on S9. Adds CLI interface to workflow coordinator."
+    },
+    {
+      "id": "S11",
+      "priority": 4,
+      "title": "Add WorkflowDashboardView to sTools app",
+      "description": "Create SwiftUI workflow dashboard with stage picker, skill list, and progress indicators.",
+      "acceptance": [
+        "WorkflowDashboardView with stage selector (segmented control)",
+        "Skills filtered by selected stage",
+        "WorkflowRow with skill name, validation summary, and progress",
+        "WorkflowProgressIndicator showing stage pipeline",
+        "ValidationIcon for error/warning/info counts",
+        "Drill-down to WorkflowDetailView for full state",
+        "Approve/reject actions from UI",
+        "SwiftUI preview with sample workflow states"
+      ],
+      "files": [
+        "Sources/SkillsInspector/Workflow/WorkflowDashboardView.swift",
+        "Sources/SkillsInspector/Workflow/WorkflowDetailView.swift",
+        "Sources/SkillsInspector/Workflow/WorkflowRow.swift",
+        "Sources/SkillsInspector/Workflow/WorkflowProgressIndicator.swift"
+      ],
+      "passes": false,
+      "notes": "Depends on S10. UI component for workflow features."
+    },
+    {
+      "id": "S12",
+      "priority": 5,
+      "title": "Add comprehensive integration tests",
+      "description": "Create end-to-end integration tests covering complete workflows from creation to publication.",
+      "acceptance": [
+        "Test: Create skill → Validate → Approve → Publish workflow",
+        "Test: Skill with ACIP findings gets quarantined",
+        "Test: Search finds newly indexed skill",
+        "Test: Spec round-trip preserves all content",
+        "Test: Sync across Codex and Claude platforms",
+        "Test: Workflow state persistence across app restarts",
+        "Performance: Index 1000 skills in <10s",
+        "Performance: Search 1000 skills in <50ms",
+        "Performance: Full workflow in <5s"
+      ],
+      "files": [
+        "Tests/SkillsCoreTests/IntegrationTests.swift"
+      ],
+      "passes": false,
+      "notes": "Run after all features implemented. Validates integration."
+    },
+    {
+      "id": "S13",
+      "priority": 5,
+      "title": "Update documentation and README",
+      "description": "Update README.md, AGENTS.md, and inline documentation with new features and examples.",
+      "acceptance": [
+        "README.md updated with new CLI commands",
+        "README.md includes architecture diagram",
+        "AGENTS.md updated with integration features",
+        "DocC comments on all public APIs",
+        "Example workflows in documentation",
+        "Migration guide for existing users",
+        "Security best practices documented"
+      ],
+      "files": [
+        "README.md",
+        ".ralph/AGENTS.md",
+        "Sources/SkillsCore/Spec/*.swift",
+        "Sources/SkillsCore/Security/*.swift",
+        "Sources/SkillsCore/Search/*.swift",
+        "Sources/SkillsCore/Workflow/*.swift"
+      ],
+      "passes": false,
+      "notes": "Final task. Complete documentation for release."
+    }
+  ]
+}

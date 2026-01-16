@@ -201,3 +201,189 @@ public struct RemoteTrustStore: Sendable {
         let keys: [TrustedKey]
     }
 }
+
+// MARK: - Security Integration
+
+/// Result of security scanning on downloaded skill content
+public enum SecurityCheckResult: Sendable {
+    case clean
+    case warning(reasons: [String])
+    case quarantined(quarantineID: String, reasons: [String], safeExcerpt: String)
+    case blocked(reason: String)
+
+    public var isClean: Bool {
+        if case .clean = self { return true }
+        return false
+    }
+
+    public var isAllowed: Bool {
+        switch self {
+        case .clean, .warning: return true
+        default: return false
+        }
+    }
+}
+
+/// Persistent store for quarantined skills that require review
+public actor QuarantineStore {
+    private var quarantinedItems: [String: QuarantineItem] = [:]
+
+    private static var storageURL: URL {
+        let fm = FileManager.default
+        let appSupportURL = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let supportDir = appSupportURL.appendingPathComponent("SkillsInspector", isDirectory: true)
+
+        if !fm.fileExists(atPath: supportDir.path) {
+            try? fm.createDirectory(at: supportDir, withIntermediateDirectories: true)
+        }
+
+        return supportDir.appendingPathComponent("quarantine.json")
+    }
+
+    public struct QuarantineItem: Codable, Sendable, Identifiable, Hashable {
+        public let id: String
+        public let skillName: String
+        public let skillSlug: String
+        public let quarantinedAt: Date
+        public let reasons: [String]
+        public let safeExcerpt: String
+        public let sourceURL: URL
+        public let status: Status
+
+        public enum Status: String, Codable, Sendable, Hashable {
+            case pending
+            case approved
+            case rejected
+        }
+
+        public init(
+            id: String,
+            skillName: String,
+            skillSlug: String,
+            quarantinedAt: Date,
+            reasons: [String],
+            safeExcerpt: String,
+            sourceURL: URL,
+            status: Status = .pending
+        ) {
+            self.id = id
+            self.skillName = skillName
+            self.skillSlug = skillSlug
+            self.quarantinedAt = quarantinedAt
+            self.reasons = reasons
+            self.safeExcerpt = safeExcerpt
+            self.sourceURL = sourceURL
+            self.status = status
+        }
+    }
+
+    public init() {
+        // Load deferred to first access
+    }
+
+    private func ensureLoaded() {
+        if quarantinedItems.isEmpty {
+            load()
+        }
+    }
+
+    /// Add an item to quarantine
+    public func quarantine(
+        skillName: String,
+        skillSlug: String,
+        reasons: [String],
+        safeExcerpt: String,
+        sourceURL: URL
+    ) -> String {
+        ensureLoaded()
+        let id = UUID().uuidString
+        let item = QuarantineItem(
+            id: id,
+            skillName: skillName,
+            skillSlug: skillSlug,
+            quarantinedAt: Date(),
+            reasons: reasons,
+            safeExcerpt: safeExcerpt,
+            sourceURL: sourceURL
+        )
+        quarantinedItems[id] = item
+        save()
+        return id
+    }
+
+    /// Approve a quarantined item
+    public func approve(id: String) -> Bool {
+        ensureLoaded()
+        guard let item = quarantinedItems[id] else { return false }
+        quarantinedItems[id] = QuarantineItem(
+            id: item.id,
+            skillName: item.skillName,
+            skillSlug: item.skillSlug,
+            quarantinedAt: item.quarantinedAt,
+            reasons: item.reasons,
+            safeExcerpt: item.safeExcerpt,
+            sourceURL: item.sourceURL,
+            status: .approved
+        )
+        save()
+        return true
+    }
+
+    /// Reject a quarantined item
+    public func reject(id: String) -> Bool {
+        ensureLoaded()
+        guard let item = quarantinedItems[id] else { return false }
+        quarantinedItems[id] = QuarantineItem(
+            id: item.id,
+            skillName: item.skillName,
+            skillSlug: item.skillSlug,
+            quarantinedAt: item.quarantinedAt,
+            reasons: item.reasons,
+            safeExcerpt: item.safeExcerpt,
+            sourceURL: item.sourceURL,
+            status: .rejected
+        )
+        save()
+        return true
+    }
+
+    /// List all quarantined items
+    public func list() -> [QuarantineItem] {
+        ensureLoaded()
+        return Array(quarantinedItems.values)
+            .sorted { $0.quarantinedAt > $1.quarantinedAt }
+    }
+
+    /// Get a specific quarantined item
+    public func get(id: String) -> QuarantineItem? {
+        ensureLoaded()
+        return quarantinedItems[id]
+    }
+
+    /// Remove an item from quarantine
+    public func remove(id: String) -> Bool {
+        ensureLoaded()
+        guard quarantinedItems.removeValue(forKey: id) != nil else { return false }
+        save()
+        return true
+    }
+
+    /// Clear all items from quarantine
+    public func clear() {
+        quarantinedItems.removeAll()
+        save()
+    }
+
+    private func save() {
+        let data = try? JSONEncoder().encode(quarantinedItems)
+        try? data?.write(to: Self.storageURL, options: .atomic)
+    }
+
+    private func load() {
+        guard let data = try? Data(contentsOf: Self.storageURL),
+              let decoded = try? JSONDecoder().decode([String: QuarantineItem].self, from: data) else {
+            return
+        }
+        quarantinedItems = decoded
+    }
+}
