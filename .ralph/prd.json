@@ -28,8 +28,8 @@
         "Integration tests cover search indexing and queries",
         "Integration tests cover cross-platform sync"
       ],
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added integration coverage for workflow publish flow, ACIP quarantine details, search rebuild/query, and multi-agent sync reports; isolated workflow state storage in tests."
     },
     {
       "id": 11,

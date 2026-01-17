@@ -3,6 +3,13 @@ import XCTest
 
 /// Unit tests for workflow state management and lifecycle coordination
 final class WorkflowTests: XCTestCase {
+    private func makeWorkflowStore() throws -> (store: WorkflowStateStore, root: URL) {
+        let fm = FileManager.default
+        let tempRoot = fm.temporaryDirectory.appendingPathComponent("workflow-store-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        let storeURL = tempRoot.appendingPathComponent("workflow-states.json")
+        return (WorkflowStateStore(storageURL: storeURL), tempRoot)
+    }
 
     // MARK: - Stage Tests
 
@@ -207,7 +214,9 @@ final class WorkflowTests: XCTestCase {
     // MARK: - WorkflowStateStore Tests
 
     func testWorkflowStateStoreCreateAndGet() async throws {
-        let store = WorkflowStateStore()
+        let storeContext = try makeWorkflowStore()
+        let store = storeContext.store
+        defer { try? FileManager.default.removeItem(at: storeContext.root) }
 
         let created = await store.create(
             skillSlug: "test-skill",
@@ -225,7 +234,9 @@ final class WorkflowTests: XCTestCase {
     }
 
     func testWorkflowStateStoreUpdate() async throws {
-        let store = WorkflowStateStore()
+        let storeContext = try makeWorkflowStore()
+        let store = storeContext.store
+        defer { try? FileManager.default.removeItem(at: storeContext.root) }
 
         var state = await store.create(
             skillSlug: "test-skill",
@@ -242,7 +253,9 @@ final class WorkflowTests: XCTestCase {
     }
 
     func testWorkflowStateStoreList() async throws {
-        let store = WorkflowStateStore()
+        let storeContext = try makeWorkflowStore()
+        let store = storeContext.store
+        defer { try? FileManager.default.removeItem(at: storeContext.root) }
 
         _ = await store.create(skillSlug: "skill1", stage: .draft)
         _ = await store.create(skillSlug: "skill2", stage: .reviewed)
@@ -261,7 +274,9 @@ final class WorkflowTests: XCTestCase {
     }
 
     func testWorkflowStateStoreDelete() async throws {
-        let store = WorkflowStateStore()
+        let storeContext = try makeWorkflowStore()
+        let store = storeContext.store
+        defer { try? FileManager.default.removeItem(at: storeContext.root) }
 
         _ = await store.create(skillSlug: "test-skill", stage: .draft)
         let beforeDelete = await store.get(skillSlug: "test-skill")
@@ -275,12 +290,14 @@ final class WorkflowTests: XCTestCase {
     // MARK: - SkillLifecycleCoordinator Tests
 
     func testCoordinatorCreateSkill() async throws {
-        let coordinator = SkillLifecycleCoordinator()
+        let storeContext = try makeWorkflowStore()
+        let coordinator = SkillLifecycleCoordinator(stateStore: storeContext.store)
         let tempDir = FileManager.default.temporaryDirectory
         let testRoot = tempDir.appendingPathComponent("test-skills-\(UUID().uuidString)")
 
         defer {
             try? FileManager.default.removeItem(at: testRoot)
+            try? FileManager.default.removeItem(at: storeContext.root)
         }
 
         let state = try await coordinator.createSkill(
@@ -305,12 +322,14 @@ final class WorkflowTests: XCTestCase {
     }
 
     func testCoordinatorValidateSkill() async throws {
-        let coordinator = SkillLifecycleCoordinator()
+        let storeContext = try makeWorkflowStore()
+        let coordinator = SkillLifecycleCoordinator(stateStore: storeContext.store)
         let tempDir = FileManager.default.temporaryDirectory
         let testRoot = tempDir.appendingPathComponent("test-skills-\(UUID().uuidString)")
 
         defer {
             try? FileManager.default.removeItem(at: testRoot)
+            try? FileManager.default.removeItem(at: storeContext.root)
         }
 
         // Create a test skill
@@ -350,12 +369,14 @@ Instructions here.
     }
 
     func testCoordinatorApproveSkill() async throws {
-        let coordinator = SkillLifecycleCoordinator()
+        let storeContext = try makeWorkflowStore()
+        let coordinator = SkillLifecycleCoordinator(stateStore: storeContext.store)
         let tempDir = FileManager.default.temporaryDirectory
         let testRoot = tempDir.appendingPathComponent("test-skills-\(UUID().uuidString)")
 
         defer {
             try? FileManager.default.removeItem(at: testRoot)
+            try? FileManager.default.removeItem(at: storeContext.root)
         }
 
         // Create a skill in reviewed state
@@ -389,12 +410,14 @@ version: 1.0.0
     }
 
     func testCoordinatorPublishSkill() async throws {
-        let coordinator = SkillLifecycleCoordinator()
+        let storeContext = try makeWorkflowStore()
+        let coordinator = SkillLifecycleCoordinator(stateStore: storeContext.store)
         let tempDir = FileManager.default.temporaryDirectory
         let testRoot = tempDir.appendingPathComponent("test-skills-\(UUID().uuidString)")
 
         defer {
             try? FileManager.default.removeItem(at: testRoot)
+            try? FileManager.default.removeItem(at: storeContext.root)
         }
 
         // Create a skill in approved state
@@ -413,10 +436,9 @@ version: 1.0.0
         try skillContent.write(to: skillPath.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
 
         // Setup workflow state as approved
-        let store = WorkflowStateStore()
-        var state = await store.create(skillSlug: "test-skill", stage: .reviewed, createdBy: "tester")
+        var state = await storeContext.store.create(skillSlug: "test-skill", stage: .reviewed, createdBy: "tester")
         state.transitionTo(.approved, by: "senior-dev", notes: "Approved")
-        await store.update(state)
+        await storeContext.store.update(state)
 
         // Publish
         let publishedState = try await coordinator.publish(
@@ -433,17 +455,20 @@ version: 1.0.0
     }
 
     func testCoordinatorInvalidTransition() async throws {
-        let coordinator = SkillLifecycleCoordinator()
+        let storeContext = try makeWorkflowStore()
+        let coordinator = SkillLifecycleCoordinator(stateStore: storeContext.store)
         let tempDir = FileManager.default.temporaryDirectory
         let testRoot = tempDir.appendingPathComponent("test-skills-\(UUID().uuidString)")
 
         defer {
             try? FileManager.default.removeItem(at: testRoot)
+            try? FileManager.default.removeItem(at: storeContext.root)
         }
 
         // Create a skill in draft state
         let skillPath = testRoot.appendingPathComponent("test-skill")
         try FileManager.default.createDirectory(at: skillPath, withIntermediateDirectories: true)
+        _ = await storeContext.store.create(skillSlug: "test-skill", stage: .draft, createdBy: "tester")
 
         do {
             _ = try await coordinator.approve(

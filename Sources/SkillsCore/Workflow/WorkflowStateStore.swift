@@ -3,8 +3,9 @@ import Foundation
 /// Persistent store for workflow states
 public actor WorkflowStateStore {
     private var states: [String: WorkflowState] = [:]
+    private let storageURL: URL
 
-    private static var storageURL: URL {
+    private static func defaultStorageURL() -> URL {
         let fm = FileManager.default
         let appSupportURL = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let supportDir = appSupportURL.appendingPathComponent("SkillsInspector", isDirectory: true)
@@ -16,7 +17,8 @@ public actor WorkflowStateStore {
         return supportDir.appendingPathComponent("workflow-states.json")
     }
 
-    public init() {
+    public init(storageURL: URL? = nil) {
+        self.storageURL = storageURL ?? Self.defaultStorageURL()
         // Load deferred to first access
     }
 
@@ -111,11 +113,11 @@ public actor WorkflowStateStore {
 
     private func save() {
         let data = try? JSONEncoder().encode(states)
-        try? data?.write(to: Self.storageURL, options: .atomic)
+        try? data?.write(to: storageURL, options: .atomic)
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: Self.storageURL),
+        guard let data = try? Data(contentsOf: storageURL),
               let decoded = try? JSONDecoder().decode([String: WorkflowState].self, from: data) else {
             return
         }
