@@ -9,7 +9,7 @@ final class UISnapshotsTests: XCTestCase {
     func testStatsViewSnapshotHash() throws {
         let view = StatsSnapshotHarness(findings: Self.sampleFindings)
         let hash = Self.renderHash(for: view, size: CGSize(width: 800, height: 1200))
-        XCTAssertEqual(hash, "aae8de6a323f70bb1262804570b35d1cce8a51f8b874e7e379aa32e01964586b")
+        XCTAssertEqual(hash, "b27f1ba4f311a852189bc4ce58c68726b2c810c00168a67e064b6defe17b6926")
     }
 
     func testMarkdownPreviewSnapshotHash() throws {

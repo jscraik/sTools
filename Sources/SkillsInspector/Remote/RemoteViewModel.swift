@@ -26,6 +26,7 @@ final class RemoteViewModel: ObservableObject {
     private let ledger: SkillLedger?
     private let telemetry: TelemetryClient
     private let features: FeatureFlags
+    private let keysetUpdater: (RemoteKeyset) -> Void
     private let changelogGenerator = SkillChangelogGenerator()
 
     init(
@@ -35,7 +36,8 @@ final class RemoteViewModel: ObservableObject {
         telemetry: TelemetryClient = .noop,
         features: FeatureFlags = .fromEnvironment(),
         targetResolver: @escaping () -> SkillInstallTarget = { .codex(PathUtil.urlFromPath("~/.codex/skills")) },
-        trustStoreProvider: @escaping () -> RemoteTrustStore = { .ephemeral }
+        trustStoreProvider: @escaping () -> RemoteTrustStore = { .ephemeral },
+        keysetUpdater: @escaping (RemoteKeyset) -> Void = { _ in }
     ) {
         let env = ProcessInfo.processInfo.environment
         if env["SKILLS_MOCK_REMOTE_SCREENSHOT"] == "1" {
@@ -52,6 +54,7 @@ final class RemoteViewModel: ObservableObject {
         self.ledger = ledger
         self.telemetry = telemetry
         self.features = features
+        self.keysetUpdater = keysetUpdater
     }
 
     func loadLatest(limit: Int = 20) async {
@@ -61,6 +64,7 @@ final class RemoteViewModel: ObservableObject {
             let result = try await client.fetchLatest(limit)
             skills = result
             await refreshInstalledVersions()
+            await refreshKeysetIfConfigured()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -147,9 +151,10 @@ final class RemoteViewModel: ObservableObject {
             let sizeMB = declaredSize / 1_048_576
             errorMessage = "Download blocked: artifact size (\(sizeMB)MB) exceeds safety limit (\(limitMB)MB)"
             telemetry.record(
-                TelemetryEvent(
-                    name: "remote_install_blocked",
-                    attributes: ["slug": skill.slug, "reason": "size_limit", "declared_size": String(declaredSize)]
+                TelemetryEvent.blockedDownload(
+                    skillSlug: skill.slug,
+                    reason: "size_limit",
+                    installerId: InstallerId.getOrCreate()
                 )
             )
             return
@@ -176,30 +181,29 @@ final class RemoteViewModel: ObservableObject {
             )
             multiTargetOutcome = outcome  // Store outcome for UI display
 
+            if outcome.didRollback {
+                let summary = outcome.failures
+                    .map { "\($0.key.displayLabel): \($0.value)" }
+                    .joined(separator: ", ")
+                errorMessage = "Rolled back: \(summary)"
+                await recordFailureEvents(for: skill, version: skill.latestVersion, failures: outcome.failures, message: "Rolled back after failure")
+                return
+            }
+
             if !outcome.failures.isEmpty {
                 let summary = outcome.failures
                     .map { "\($0.key.displayLabel): \($0.value)" }
                     .joined(separator: ", ")
                 errorMessage = "Partial failure: \(summary)"
                 await recordFailureEvents(for: skill, version: skill.latestVersion, failures: outcome.failures)
-                telemetry.record(
-                    TelemetryEvent(
-                        name: "remote_install_partial_success",
-                        attributes: [
-                            "slug": skill.slug,
-                            "version": skill.latestVersion ?? "unknown",
-                            "success_count": String(outcome.successes.count),
-                            "failure_count": String(outcome.failures.count)
-                        ]
-                    )
-                )
             } else {
                 installResult = outcome.successes[.codex]
                 await recordSuccessEvents(for: skill, version: skill.latestVersion, results: outcome.successes, manifest: manifest)
                 telemetry.record(
-                    TelemetryEvent(
-                        name: "remote_install_success",
-                        attributes: ["slug": skill.slug, "version": skill.latestVersion ?? "unknown"]
+                    TelemetryEvent.verifiedInstall(
+                        skillSlug: skill.slug,
+                        version: skill.latestVersion ?? "unknown",
+                        installerId: InstallerId.getOrCreate()
                     )
                 )
             }
@@ -207,12 +211,6 @@ final class RemoteViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
             await recordFailureEvents(for: skill, version: skill.latestVersion, failures: [:], message: error.localizedDescription)
-            telemetry.record(
-                TelemetryEvent(
-                    name: "remote_install_failed",
-                    attributes: ["slug": skill.slug, "version": skill.latestVersion ?? "unknown"]
-                )
-            )
         }
     }
 
@@ -228,9 +226,10 @@ final class RemoteViewModel: ObservableObject {
             let sizeMB = declaredSize / 1_048_576
             errorMessage = "Download blocked: artifact size (\(sizeMB)MB) exceeds safety limit (\(limitMB)MB)"
             telemetry.record(
-                TelemetryEvent(
-                    name: "remote_install_blocked",
-                    attributes: ["slug": slug, "reason": "size_limit", "declared_size": String(declaredSize)]
+                TelemetryEvent.blockedDownload(
+                    skillSlug: slug,
+                    reason: "size_limit",
+                    installerId: InstallerId.getOrCreate()
                 )
             )
             return
@@ -254,9 +253,17 @@ final class RemoteViewModel: ObservableObject {
             )
             installResult = result
             let skill = skills.first { $0.slug == slug }
+            let resolvedVersion = version ?? skill?.latestVersion ?? "unknown"
             if let skill {
-                await recordSingleSuccess(skill: skill, version: version ?? skill.latestVersion, result: result, manifest: manifest)
+                await recordSingleSuccess(skill: skill, version: resolvedVersion, result: result, manifest: manifest)
             }
+            telemetry.record(
+                TelemetryEvent.verifiedInstall(
+                    skillSlug: slug,
+                    version: resolvedVersion,
+                    installerId: InstallerId.getOrCreate()
+                )
+            )
             await refreshInstalledVersions()
         } catch {
             errorMessage = error.localizedDescription
@@ -303,6 +310,7 @@ final class RemoteViewModel: ObservableObject {
 
         for (index, skill) in skills.enumerated() {
             await fetchPreview(for: skill)
+            await recordVerifyIfAvailable(skill: skill)
             let updatedProgress = BulkOperationProgress(
                 operation: .verifyAll,
                 total: skills.count,
@@ -355,6 +363,8 @@ final class RemoteViewModel: ObservableObject {
         do {
             let events = try await ledger.fetchEvents(limit: 1000)
             let markdown = changelogGenerator.generateAuditorMarkdown(events: events)
+            let signer = ChangelogSigner()
+            let signed = try signer.sign(markdown: markdown)
 
             let savePanel = NSSavePanel()
             savePanel.allowedContentTypes = [.plainText]
@@ -364,7 +374,7 @@ final class RemoteViewModel: ObservableObject {
 
             #if os(macOS)
             if savePanel.runModal() == .OK, let url = savePanel.url {
-                try markdown.write(to: url, atomically: true, encoding: .utf8)
+                try signed.renderSignedMarkdown().write(to: url, atomically: true, encoding: .utf8)
                 exportedChangelogURL = url
                 errorMessage = nil
             }
@@ -496,6 +506,25 @@ final class RemoteViewModel: ObservableObject {
         }
     }
 
+    private func recordVerifyIfAvailable(skill: RemoteSkill) async {
+        guard let manifest = previewStateBySlug[skill.slug]?.manifest else { return }
+        await recordLedgerEvent(
+            LedgerEventInput(
+                eventType: .verify,
+                skillName: skill.displayName,
+                skillSlug: skill.slug,
+                version: skill.latestVersion,
+                agent: nil,
+                status: .success,
+                note: "Verified via preview",
+                source: "remote",
+                verification: .strict,
+                manifestSHA256: manifest.sha256,
+                signerKeyId: manifest.signerKeyId
+            )
+        )
+    }
+
     private func fetchManifestCached(slug: String, version: String?) async throws -> RemoteArtifactManifest? {
         if let cached = previewCache.loadManifest(slug: slug, version: version) {
             return cached.manifest
@@ -520,6 +549,25 @@ final class RemoteViewModel: ObservableObject {
         guard let text = try? String(contentsOf: skillFile, encoding: .utf8) else { return nil }
         let fm = FrontmatterParser.parseTopBlock(text)
         return fm["version"]
+    }
+
+    private func refreshKeysetIfConfigured() async {
+        guard let rootKey = ProcessInfo.processInfo.environment["STOOLS_KEYSET_ROOT_KEY"],
+              !rootKey.isEmpty else { return }
+        do {
+            guard let keyset = try await client.fetchKeyset() else { return }
+            if keyset.isExpired() {
+                errorMessage = "Remote keyset expired; using existing trust store."
+                return
+            }
+            guard keyset.verifySignature(rootPublicKeyBase64: rootKey) else {
+                errorMessage = "Remote keyset signature verification failed."
+                return
+            }
+            keysetUpdater(keyset)
+        } catch {
+            errorMessage = "Failed to refresh keyset: \(error.localizedDescription)"
+        }
     }
 }
 

@@ -113,7 +113,7 @@ public actor ACIPScanner {
                 (
                     "override-safety",
                     "Safety Override",
-                    "(?i)(disable|turn\\s+off|bypass|ignore)\\s+(your|all\\s+)?(safety|security|ethical|moral|filter)",
+                    "(?i)(disable|turn\\s+off|bypass|ignore)\\s+(your|all)?\\s*(safety\\s+filters?|safety|security|ethical|moral|filters?)",
                     .critical,
                     "Attempts to disable safety measures"
                 ),
@@ -194,27 +194,23 @@ public actor ACIPScanner {
             ? InjectionPattern.builtInPatterns
             : InjectionPattern.builtInPatterns.filter { config.enabledPatterns.contains($0.id) }
 
+        let allowlistRegexes = config.allowlist.compactMap { pattern in
+            try? Regex(pattern)
+        }
+        let compiledPatterns: [(InjectionPattern, Regex<AnyRegexOutput>)] = patternsToUse.compactMap { pattern in
+            guard let regex = try? pattern.pattern else { return nil }
+            return (pattern, regex)
+        }
+
         let lines = content.split(whereSeparator: \.isNewline)
 
         for (lineIndex, line) in lines.enumerated() {
             let lineNumber = lineIndex + 1
 
             // Skip allowlisted patterns for this line
-            var lineSkipped = false
-            for allowPattern in config.allowlist {
-                if let range = line.range(of: allowPattern, options: .regularExpression) {
-                    // Check if this line contains only allowed content
-                    let beforeAllowlist = String(line[..<range.lowerBound])
-                    let afterAllowlist = String(line[range.upperBound...])
-                    if beforeAllowlist.trimmingCharacters(in: .whitespaces).isEmpty &&
-                       afterAllowlist.trimmingCharacters(in: .whitespaces).isEmpty {
-                        lineSkipped = true
-                        break
-                    }
-                }
+            if allowlistRegexes.contains(where: { line.firstMatch(of: $0) != nil }) {
+                continue
             }
-
-            if lineSkipped { continue }
 
             // Check against blocklist first
             for blockPattern in config.blocklist {
@@ -232,11 +228,8 @@ public actor ACIPScanner {
             }
 
             // Scan for injection patterns
-            for pattern in patternsToUse {
-                // Compile regex pattern
-                guard let regex = try? pattern.pattern else { continue }
-
-                if let _ = line.firstMatch(of: regex) {
+            for (pattern, regex) in compiledPatterns {
+                if line.firstMatch(of: regex) != nil {
                     matchedPatterns.append(pattern)
                     matchedLines.insert(lineNumber)
                     totalMatches += 1
@@ -307,12 +300,37 @@ public actor ACIPScanner {
                 continue
             }
 
-            guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else {
+            if !config.scanReferences, isReferencePath(fileURL) {
                 continue
             }
 
-            let result = scan(content: content, source: source, contentID: fileURL.path)
-            results[fileURL.path] = result
+            let resolvedPath = fileURL.resolvingSymlinksInPath().path
+
+            if let fileSize = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize,
+               fileSize > config.maxFileSize {
+                results[resolvedPath] = ScanResult(
+                    action: .quarantine(
+                        reason: "File exceeds max size limit",
+                        match: "file_size",
+                        safeExcerpt: ""
+                    ),
+                    patterns: [],
+                    matchCount: 0,
+                    matchedLines: []
+                )
+                continue
+            }
+
+            guard var content = try? String(contentsOf: fileURL, encoding: .utf8) else {
+                continue
+            }
+
+            if fileURL.pathExtension == "md", !config.scanCodeBlocks {
+                content = stripMarkdownCodeBlocks(from: content)
+            }
+
+            let result = scan(content: content, source: source, contentID: resolvedPath)
+            results[resolvedPath] = result
         }
 
         return results
@@ -339,5 +357,26 @@ public actor ACIPScanner {
         }
 
         return excerptLines.joined(separator: "\n")
+    }
+
+    private func isReferencePath(_ fileURL: URL) -> Bool {
+        let path = fileURL.path
+        return path.contains("/references/") || path.contains("/assets/") || path.contains("/scripts/")
+    }
+
+    private func stripMarkdownCodeBlocks(from content: String) -> String {
+        let lines = content.split(whereSeparator: \.isNewline)
+        var output: [Substring] = []
+        var inCodeBlock = false
+        for line in lines {
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                inCodeBlock.toggle()
+                continue
+            }
+            if !inCodeBlock {
+                output.append(line)
+            }
+        }
+        return output.joined(separator: "\n")
     }
 }

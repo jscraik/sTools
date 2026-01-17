@@ -33,7 +33,10 @@ struct LegacyContentView: View {
                 ledger: ledger,
                 telemetry: telemetry,
                 features: features,
-                trustStoreProvider: { trustStoreVM.trustStore }
+                trustStoreProvider: { trustStoreVM.trustStore },
+                keysetUpdater: { keyset in
+                    trustStoreVM.applyKeyset(keyset)
+                }
             )
         )
     }

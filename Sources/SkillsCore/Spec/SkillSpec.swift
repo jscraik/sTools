@@ -163,9 +163,10 @@ public struct SkillSpec: Codable, Sendable, Equatable {
         public var errorDescription: String? {
             var result = "[\(severity.rawValue.uppercased())] \(code): \(message)"
             if let line = line {
-                result += " (line \(line))"
                 if let column = column {
-                    result += ":\(column)"
+                    result += " (line \(line):\(column))"
+                } else {
+                    result += " (line \(line))"
                 }
             }
             return result
@@ -425,4 +426,3 @@ public struct SkillSpec: Codable, Sendable, Equatable {
         case sectionRemoved(index: Int, heading: String)
     }
 }
-

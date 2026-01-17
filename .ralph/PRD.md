@@ -2,14 +2,16 @@
 
 ## Overview
 
-Bootstrap Ralph for the sTools repo so agent loops can run with accurate build/test/lint
-commands and a minimal, safe initial task set. Scope is configuration-only for Ralph;
-no product code changes are required. The output should help establish a clean starting
-point for future feature work by validating the repo’s quality gates and recording the
-results in Ralph’s iteration logs.
+Close the remaining spec gaps for the Trustworthy Skills Inspector: ACIP scanning in remote installs,
+multi-target rollback, signed changelog exports, telemetry schema allowlist, signed keyset refresh,
+and verification event logging. Update specs and README to reflect the implemented behavior, and add
+integration tests to cover end-to-end flows.
 
 ## Tasks
 
-- [ ] Confirm repo commands and quality gates in `.ralph/AGENTS.md` (build/test/lint/CLI smoke)
-- [ ] Run a baseline Ralph iteration using the updated configuration
-- [ ] Record any blockers or follow-up tasks discovered during the run
+- This file is now a human-readable summary. The canonical tracker is `.ralph/prd.json`.
+
+Remaining tasks (see `.ralph/prd.json` for IDs and acceptance criteria):
+- Add CLI security/quarantine commands and tests.
+- Expand integration tests for end-to-end workflows.
+- Finalize docs and README updates for new CLI commands.

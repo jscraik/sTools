@@ -135,6 +135,8 @@ tags: [tag1, tag2]
 - `.skillsctl/baseline.json` - Known validation issues to ignore
 - `.skillsctl/cache.json` - Incremental validation cache
 - `.skillsctl/ignore.json` - Same shape as baseline
+- `STOOLS_KEYSET_ROOT_KEY` - Base64 Ed25519 root public key for verifying signed keysets
+  - When set, Remote fetches `/api/v1/keys` and updates the trust store only if the signature verifies and the keyset is not expired.
 
 ### Product Targets
 
@@ -180,3 +182,5 @@ Sources/SkillsCore/
 - Browse catalog: `skillsctl remote list --limit 10`
 - Search: `skillsctl remote search "sql"`
 - Install: `skillsctl remote install my-skill --target codex`
+- Remote installs enforce MIME/type checks, ACIP scanning, and all-or-nothing rollback across targets.
+- Changelog exports are signed with a per-device Ed25519 key stored in Keychain by default (file-based store only when explicitly configured).

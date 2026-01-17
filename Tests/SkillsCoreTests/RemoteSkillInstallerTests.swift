@@ -156,7 +156,11 @@ final class RemoteSkillInstallerTests: XCTestCase {
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
 
-        let manifest = RemoteArtifactManifest(sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL))
+        let manifest = RemoteArtifactManifest(
+            name: "verify",
+            version: "1.0.0",
+            sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL)
+        )
         let installer = RemoteSkillInstaller()
         let outcome = try installer.verify(
             archiveURL: archiveURL,
@@ -206,7 +210,7 @@ final class RemoteSkillInstallerTests: XCTestCase {
                 archiveURL: archiveURL,
                 target: .custom(targetRoot),
                 manifest: manifest,
-                policy: .strict
+                policy: RemoteVerificationPolicy(mode: .strict)
             )
             XCTFail("Expected verification failure for revoked key")
         } catch RemoteInstallError.verificationFailed(let reason) {
@@ -365,7 +369,7 @@ final class RemoteSkillInstallerTests: XCTestCase {
                 archiveURL: archiveURL,
                 target: .custom(targetRoot),
                 manifest: badChecksumManifest,
-                policy: .strict
+                policy: RemoteVerificationPolicy(mode: .strict)
             )
             XCTFail("Expected installation to fail with checksum mismatch")
         } catch RemoteInstallError.verificationFailed(let reason) {
@@ -389,7 +393,7 @@ final class RemoteSkillInstallerTests: XCTestCase {
                 archiveURL: archiveURL,
                 target: .custom(targetRoot),
                 manifest: wrongSizeManifest,
-                policy: .strict
+                policy: RemoteVerificationPolicy(mode: .strict)
             )
             XCTFail("Expected installation to fail with size mismatch")
         } catch RemoteInstallError.verificationFailed(let reason) {
@@ -435,8 +439,8 @@ final class RemoteSkillInstallerTests: XCTestCase {
             name: "test",
             version: "1.0.0",
             sha256: String(repeating: "a", count: 64),
-            signerKeyId: "signer-key-abc123",
-            signature: "dummy-signature"
+            signature: "dummy-signature",
+            signerKeyId: "signer-key-abc123"
         )
         XCTAssertEqual(manifest.signerKeyId, "signer-key-abc123")
         XCTAssertNotNil(manifest.signature)
@@ -479,7 +483,7 @@ final class RemoteSkillInstallerTests: XCTestCase {
              RemoteArtifactManifest(name: "error-test", version: "1.0.0", sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL), signerKeyId: "revoked-key", revokedKeys: ["revoked-key"]),
              "revoked"),
             ("Untrusted signer",
-             RemoteArtifactManifest(name: "error-test", version: "1.0.0", sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL), trustedSigners: ["trusted-key"], signerKeyId: "unknown-key"),
+             RemoteArtifactManifest(name: "error-test", version: "1.0.0", sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL), signerKeyId: "unknown-key", trustedSigners: ["trusted-key"]),
              "trustedSigners")
         ]
 
@@ -491,7 +495,7 @@ final class RemoteSkillInstallerTests: XCTestCase {
                     archiveURL: archiveURL,
                     target: .custom(targetRoot),
                     manifest: manifest,
-                    policy: .strict
+                    policy: RemoteVerificationPolicy(mode: .strict)
                 )
                 XCTFail("\(name): Expected verification failure")
             } catch RemoteInstallError.verificationFailed(let reason) {

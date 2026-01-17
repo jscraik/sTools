@@ -108,7 +108,18 @@ public struct WorkflowState: Codable, Sendable, Identifiable, Hashable {
         self.validationResults = validationResults
         self.reviewNotes = reviewNotes
         self.reviewer = reviewer
-        self.versionHistory = versionHistory
+        if versionHistory.isEmpty {
+            self.versionHistory = [
+                VersionEntry(
+                    version: "1",
+                    stage: stage,
+                    changedBy: "system",
+                    changelog: "Initial state"
+                )
+            ]
+        } else {
+            self.versionHistory = versionHistory
+        }
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

@@ -28,9 +28,10 @@ Audience: sTools core team, security reviewers
 ### Install/Update
 - Require manifest containing checksum (sha256) and signer key ID; verify before unzip; fail closed.
 - Support detached Ed25519 signatures; allow multiple trusted keys per skill for rotation; maintain `revokedKeys` list per skill.
-- Size/MIME limits and archive structure validation (no symlinks, no absolute paths, bounded file count).
+- Size/MIME limits and archive structure validation (zip only, no symlinks, no absolute paths, bounded file count).
 - Consent gate: API-based preview labeled “Safe preview from server”; integrity only confirmed on download+verify.
-- Rollback: keep last-good version and restore automatically on failure.
+- Rollback: keep last-good version and restore automatically on failure; multi-target installs roll back all targets on any failure.
+- ACIP scanning: scan remote skill contents before install; quarantine or block on high/critical matches with a review queue.
 
 ### Publish
 - Replace `bunx ...@latest` with pinned version plus checksum; vendor or lock via SRI; record tool hash.
@@ -40,6 +41,7 @@ Audience: sTools core team, security reviewers
 ### Versioning and Changelog
 - Local append-only ledger (SQLite) of installs/updates/removals with version, hash, signer key, source, IDE targets, and per-target result.
 - Auto-generate markdown changelog per skill from ledger entries.
+- Changelog exports are signed (Ed25519) with public key included for audit verification.
 
 ### Cross-IDE Unification
 - Adapter layer writes validated artifacts into:
@@ -59,6 +61,9 @@ Audience: sTools core team, security reviewers
 
 ### Telemetry (opt-in)
 - Capture counts of verified installs, blocked downloads, publish runs; include app version and anonymized install ID; no PII. Metrics are recorded only when telemetryOptIn is enabled (default off). Retain telemetry locally for 30 days.
+
+### Key Distribution
+- Fetch a signed keyset from the catalog; update local trust store only when the keyset signature verifies against a pinned root key.
 
 ## 5) Non-Functional Requirements
 - Security: OWASP Top 10:2025 A8 Software Integrity; fail-closed verification; local trust store at `~/Library/Application Support/SkillsInspector/trust.json`.

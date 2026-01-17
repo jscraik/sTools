@@ -18,6 +18,7 @@ final class SkillLedgerTests: XCTestCase {
             agent: .codex,
             status: .success,
             note: "Installed via test",
+            source: "unit-test",
             verification: .strict,
             manifestSHA256: "abc123",
             targetPath: "/tmp/skills/prompt-booster"
@@ -45,9 +46,13 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .claude,
                 status: .success,
                 note: "Updated for release",
+                source: nil,
                 verification: .strict,
                 manifestSHA256: nil,
-                targetPath: nil
+                targetPath: nil,
+                targets: nil,
+                perTargetResults: nil,
+                signerKeyId: nil
             )
         ]
         let markdown = generator.generateAppStoreMarkdown(events: events)
@@ -186,9 +191,13 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .strict,
                 manifestSHA256: nil,
-                targetPath: nil
+                targetPath: nil,
+                targets: nil,
+                perTargetResults: nil,
+                signerKeyId: nil
             ),
             LedgerEvent(
                 id: 2,
@@ -200,9 +209,13 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .strict,
                 manifestSHA256: nil,
-                targetPath: nil
+                targetPath: nil,
+                targets: nil,
+                perTargetResults: nil,
+                signerKeyId: nil
             )
         ]
 
@@ -229,9 +242,13 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .strict,
                 manifestSHA256: nil,
-                targetPath: nil
+                targetPath: nil,
+                targets: nil,
+                perTargetResults: nil,
+                signerKeyId: nil
             ),
             LedgerEvent(
                 id: 2,
@@ -243,9 +260,13 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .strict,
                 manifestSHA256: nil,
-                targetPath: nil
+                targetPath: nil,
+                targets: nil,
+                perTargetResults: nil,
+                signerKeyId: nil
             )
         ]
 
@@ -331,6 +352,7 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .strict,
                 manifestSHA256: "abc123def456",
                 targetPath: nil,
@@ -348,6 +370,7 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .failure,
                 note: "Signature verification failed",
+                source: nil,
                 verification: .permissive,
                 manifestSHA256: "badhash123",
                 targetPath: nil,
@@ -379,6 +402,7 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .strict,
                 manifestSHA256: "abc123def456789",
                 targetPath: nil,
@@ -396,6 +420,7 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .permissive,
                 manifestSHA256: "xyz789",
                 targetPath: nil,
@@ -428,6 +453,7 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .strict,
                 manifestSHA256: "hash-a",
                 targetPath: nil,
@@ -445,6 +471,7 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .permissive,
                 manifestSHA256: "hash-b",
                 targetPath: nil,
@@ -479,6 +506,7 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .strict,
                 manifestSHA256: "hash-1",
                 targetPath: nil,
@@ -496,6 +524,7 @@ final class SkillLedgerTests: XCTestCase {
                 agent: .codex,
                 status: .success,
                 note: nil,
+                source: nil,
                 verification: .permissive,
                 manifestSHA256: "hash-1",
                 targetPath: nil,
@@ -526,6 +555,7 @@ final class SkillLedgerTests: XCTestCase {
         let today = Date()
 
         try await ledger.record(LedgerEventInput(
+            timestamp: yesterday,
             eventType: .install,
             skillName: "Old Skill",
             skillSlug: "old-skill",
@@ -534,6 +564,18 @@ final class SkillLedgerTests: XCTestCase {
             status: .success,
             manifestSHA256: "old-hash",
             signerKeyId: "signer-old"
+        ))
+
+        try await ledger.record(LedgerEventInput(
+            timestamp: today,
+            eventType: .install,
+            skillName: "New Skill",
+            skillSlug: "new-skill",
+            version: "1.0.0",
+            agent: .codex,
+            status: .success,
+            manifestSHA256: "new-hash",
+            signerKeyId: "signer-new"
         ))
 
         let generator = SkillChangelogGenerator()
@@ -565,9 +607,10 @@ final class SkillLedgerTests: XCTestCase {
             version: "1.0.0",
             agent: .codex,
             status: .success,
+            source: nil,
+            verification: .strict,
             manifestSHA256: "a1b2c3d4e5f6",
-            signerKeyId: "ed25519:key001",
-            verification: .strict
+            signerKeyId: "ed25519:key001"
         ))
 
         let allEvents = try await ledger.fetchEvents(limit: 100)

@@ -24,6 +24,10 @@ sTools helps you validate, sync, and manage skill documentation across AI agent 
 - Generate skill indexes and manage versions
 - Incremental caching for fast re-validation
 - Watch mode for development workflows
+- Browse remote skills with safe preview and verified installs
+- Cross-IDE installs for Codex, Claude, and Copilot roots
+- Ledger-backed changelog exports with signatures for audit
+- Pinned publishing with deterministic artifacts and attestations
 
 ## Contents
 
@@ -204,12 +208,14 @@ swift run sTools
 
 ### Features
 
-- **Modes**: Check (scan + filters), Sync (compare Codex/Claude trees with diff/copy), Index (placeholder)
+- **Modes**: Check (scan + filters), Sync (compare Codex/Claude trees with diff/copy), Index, Remote, Changelog
 - **Quick Actions**: Right-click any finding to open in editor (line-aware), show in Finder, add to baseline (persists to `.skillsctl/baseline.json`), or copy rule ID/path/message
 - **Watch Mode**: Toggle to auto-rescan when SKILL.md files change (500ms debounce)
 - **Cache Stats**: Cache hits surface in the Check tab; clear cache from the app settings
 - **Sync View**: Per-root excludes/globs + depth; see only-in-Codex/Claude and diff buckets with detail pane
 - **Keyboard Shortcuts**: ⌘R scan, ⌘W close
+- **Remote**: Safe preview with signer provenance, download-and-verify gate, bulk verify/update actions
+- **Changelog**: Export signed audit trails from the local ledger
 
 ## Configuration
 
@@ -217,6 +223,11 @@ swift run sTools
 - `.skillsctl/baseline.json` (see `docs/baseline-schema.json`)
 - `.skillsctl/cache.json` (auto-generated, invalidated on config changes)
 - Ignore file (same shape as baseline) supported via `--ignore`.
+
+Remote trust configuration:
+- `STOOLS_KEYSET_ROOT_KEY`: Base64 Ed25519 root public key for verifying signed keysets.
+  When set, the Remote tab fetches `/api/v1/keys` and updates the trust store only if the keyset
+  signature verifies and the keyset is not expired; otherwise it keeps the existing trust store.
 
 CLI defaults:
 

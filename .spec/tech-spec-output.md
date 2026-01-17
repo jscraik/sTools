@@ -76,6 +76,7 @@ stateDiagram-v2
 - All archive extraction uses path validation to prevent traversal and symlink attacks.
 - Key rotation requires explicit user consent when signerKeyId changes.
 - Revocation updates are fetched from the catalog and cached with expiry; keyset is signed by a root key pinned in the app.
+- Keyset refresh uses a configured root key (env/config); expired or invalid keysets keep the existing trust store and surface a warning.
 - Network communications require HTTPS with TLS 1.2+; optional CA pinning in advanced settings.
 - Changelog signing uses a per-device key stored in Keychain; exported changelogs include the public key for verification. Optional org-managed signing key is supported via configuration.
 
@@ -92,7 +93,8 @@ stateDiagram-v2
 - Support detached Ed25519 signatures; allow multiple trusted keys per skill for rotation; maintain `revokedKeys` list per skill.
 - Size/MIME limits and archive structure validation (no symlinks, no absolute paths, bounded file count).
 - Consent gate: API-based preview labeled “Safe preview from server”; integrity only confirmed on download + verify.
-- Rollback: keep last-good version and restore automatically on failure.
+- Rollback: keep last-good version and restore automatically on failure; multi-target installs must roll back all targets if any target fails.
+- ACIP scanning: scan skill contents before install; quarantine or block on high/critical injection matches; queue quarantined items for review.
 
 ### Publish
 - Replace `bunx ...@latest` with pinned version plus checksum; vendor or lock via SRI; record tool hash.
@@ -102,6 +104,7 @@ stateDiagram-v2
 ### Versioning and Changelog
 - Local append-only ledger (SQLite) of installs/updates/removals with version, hash, signer key, source, IDE targets, and per-target result.
 - Auto-generate markdown changelog per skill from ledger entries.
+- Changelog exports are signed (Ed25519) and include a public key for verification.
 
 ### Cross-IDE Unification
 - Adapter layer writes validated artifacts into:
@@ -158,6 +161,7 @@ stateDiagram-v2
 - Zip bombs/oversized archives: reject if size/file-count exceeds caps.
 - MITM: enforce HTTPS + signature verification; optional CA pinning toggle.
 - Key rotation: accept multiple trustedSigners per skill; TrustStore manages revocations.
+- Keyset expiry or signature failure: keep existing trust store and surface a warning.
 - Adapter drift: per-target validation with explicit failure surfacing and rollback.
 - Cache poisoning: validate cached preview against manifest hash; expire by ETag/time.
 

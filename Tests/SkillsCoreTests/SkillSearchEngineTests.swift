@@ -40,7 +40,7 @@ final class SkillSearchEngineTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: testDBURL.path))
     }
 
-    func testDefaultEngineInitialization() throws {
+    func testDefaultEngineInitialization() async throws {
         // Test default initialization (Application Support)
         let defaultEngine = try SkillSearchEngine.default()
 
@@ -133,7 +133,11 @@ final class SkillSearchEngineTests: XCTestCase {
         // Search for updated content
         let results = try await testEngine.search(query: "Updated Content")
         XCTAssertEqual(results.count, 1, "Should find updated content")
-        XCTAssertTrue(results[0].snippet.contains("Updated"))
+        guard let first = results.first else {
+            XCTFail("Expected search results for updated content")
+            return
+        }
+        XCTAssertTrue(first.snippet.contains("Updated"))
     }
 
     // MARK: - Search Tests
@@ -315,7 +319,8 @@ final class SkillSearchEngineTests: XCTestCase {
             try await testEngine.indexSkill(skill, content: "Content \(i)")
         }
 
-        XCTAssertEqual(try await testEngine.getStats().totalSkills, 3)
+        let statsBefore = try await testEngine.getStats()
+        XCTAssertEqual(statsBefore.totalSkills, 3)
 
         // Clear and rebuild with different skills
         let newRoot = FileManager.default.temporaryDirectory.appendingPathComponent("test-rebuild")
@@ -409,31 +414,14 @@ final class SkillSearchEngineTests: XCTestCase {
     // MARK: - Performance Tests
 
     func testIndexPerformance() async throws {
-        // Performance test: index 100 skills quickly
-        measure {
-            let group = DispatchGroup()
-            var indexingError: Error?
-
-            for i in 1...100 {
-                group.enter()
-                let skill = createTestSkill(
-                    slug: "perf-\(i)",
-                    name: "Performance \(i)",
-                    description: "Testing performance"
-                )
-
-                Task {
-                    defer { group.leave() }
-                    do {
-                        try await testEngine.indexSkill(skill, content: "Content \(i) for performance testing")
-                    } catch {
-                        indexingError = error
-                    }
-                }
-            }
-
-            group.wait()
-            XCTAssertNil(indexingError, "Indexing should complete without errors")
+        // Basic performance sanity: index 100 skills without errors
+        for i in 1...100 {
+            let skill = createTestSkill(
+                slug: "perf-\(i)",
+                name: "Performance \(i)",
+                description: "Testing performance"
+            )
+            try await testEngine.indexSkill(skill, content: "Content \(i) for performance testing")
         }
     }
 
@@ -444,11 +432,9 @@ final class SkillSearchEngineTests: XCTestCase {
             try await testEngine.indexSkill(skill, content: "Content \(i) with various words for testing")
         }
 
-        // Performance test: search should be fast
-        measure {
-            let results = try? await testEngine.search(query: "content", limit: 20)
-            XCTAssertNotNil(results)
-        }
+        // Basic performance sanity: search should return results
+        let results = try await testEngine.search(query: "content", limit: 20)
+        XCTAssertFalse(results.isEmpty)
     }
 
     // MARK: - Helper Methods

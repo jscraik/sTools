@@ -171,11 +171,15 @@ public struct SkillPublisher: Sendable {
 
     private func enumerateFiles(root: URL) throws -> [String] {
         let fm = FileManager.default
-        let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [], errorHandler: nil)
+        let resolvedRoot = root.resolvingSymlinksInPath()
+        let enumerator = fm.enumerator(at: resolvedRoot, includingPropertiesForKeys: [.isDirectoryKey], options: [], errorHandler: nil)
         var files: [String] = []
         while let url = enumerator?.nextObject() as? URL {
-            if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { continue }
-            let relative = url.path.replacingOccurrences(of: root.path + "/", with: "")
+            let resolvedURL = url.resolvingSymlinksInPath()
+            if (try? resolvedURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { continue }
+            let rootPrefix = resolvedRoot.path + "/"
+            guard resolvedURL.path.hasPrefix(rootPrefix) else { continue }
+            let relative = resolvedURL.path.replacingOccurrences(of: rootPrefix, with: "")
             files.append(relative)
         }
         return files.sorted()

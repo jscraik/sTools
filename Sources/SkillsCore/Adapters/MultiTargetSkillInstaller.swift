@@ -49,7 +49,7 @@ public struct MultiTargetSkillInstaller: Sendable {
     ///   - trustStore: Trust store for signature verification
     ///   - skillSlug: Optional skill identifier for logging
     /// - Returns: Outcome containing successes and failures per target
-    /// - Note: Failed targets do NOT roll back successful targets (best-effort semantics)
+    /// - Note: Any failure triggers rollback across all targets (all-or-nothing semantics)
     public func install(
         archiveURL: URL,
         targets: [SkillInstallTarget],
@@ -60,6 +60,7 @@ public struct MultiTargetSkillInstaller: Sendable {
         skillSlug: String? = nil
     ) async throws -> MultiTargetInstallOutcome {
         var successes: [AgentKind: RemoteSkillInstallResult] = [:]
+        var installed: [AgentKind: RemoteSkillInstallResult] = [:]
         var failures: [AgentKind: String] = [:]
 
         for target in targets {
@@ -71,8 +72,11 @@ public struct MultiTargetSkillInstaller: Sendable {
                     manifest: manifest,
                     policy: policy,
                     trustStore: trustStore,
-                    skillSlug: skillSlug
+                    skillSlug: skillSlug,
+                    preserveBackup: true
                 )
+
+                installed[target.agentKind] = result
 
                 // Run post-install validation hook
                 if let validationError = validator.validate(result: result, target: target) {
@@ -82,21 +86,50 @@ public struct MultiTargetSkillInstaller: Sendable {
                 successes[target.agentKind] = result
             } catch {
                 failures[target.agentKind] = error.localizedDescription
-                // Continue with remaining targets - do NOT roll back successful installs
-                // This implements best-effort semantics for cross-IDE installs
+                break
             }
         }
 
+        if failures.isEmpty {
+            cleanupBackups(for: installed)
+            return MultiTargetInstallOutcome(
+                successes: successes,
+                failures: failures,
+                didRollback: false
+            )
+        }
+
+        let rollbackReason = failures.values.first ?? "Install failed"
+        rollbackInstallations(for: installed, reason: rollbackReason)
+
+        for target in targets.map(\.agentKind) where failures[target] == nil {
+            failures[target] = "Rolled back due to failure: \(rollbackReason)"
+        }
+
         return MultiTargetInstallOutcome(
-            successes: successes,
+            successes: [:],
             failures: failures,
-            didRollback: false
+            didRollback: true
         )
     }
 
-    private func rollback(paths: [URL]) {
-        for path in paths {
-            try? FileManager.default.removeItem(at: path)
+    private func rollbackInstallations(for successes: [AgentKind: RemoteSkillInstallResult], reason: String) {
+        for result in successes.values {
+            let destination = result.skillDirectory
+            if let backupURL = result.backupURL, FileManager.default.fileExists(atPath: backupURL.path) {
+                try? FileManager.default.removeItem(at: destination)
+                try? FileManager.default.moveItem(at: backupURL, to: destination)
+            } else {
+                try? FileManager.default.removeItem(at: destination)
+            }
+        }
+    }
+
+    private func cleanupBackups(for successes: [AgentKind: RemoteSkillInstallResult]) {
+        for result in successes.values {
+            if let backupURL = result.backupURL {
+                try? FileManager.default.removeItem(at: backupURL)
+            }
         }
     }
 }

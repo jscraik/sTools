@@ -25,6 +25,7 @@ Allowed outputs:
    - Study `.ralph/specs/*` to understand intended behavior.
    - Study the codebase (`src/*`, tests, config) to understand what already exists.
    - Critical guardrail: **don't assume something is missing** — confirm via search/inspection.
+   - Review `.ralph/ralph.toml` gates to ensure planning tasks account for required checks.
 
 1. **Gap analysis**
    - Compare `.ralph/specs/*` against code.

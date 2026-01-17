@@ -137,8 +137,10 @@ public struct RemoteTrustStore: Sendable {
 
     public func trustedKey(for keyId: String, scopeSlug: String? = nil) -> TrustedKey? {
         guard let key = keys[keyId] else { return nil }
-        if let scopeSlug, let allowed = key.allowedSlugs, !allowed.contains(scopeSlug) {
-            return nil
+        if let allowed = key.allowedSlugs {
+            guard let scopeSlug, allowed.contains(scopeSlug) else {
+                return nil
+            }
         }
         return key
     }
@@ -227,8 +229,9 @@ public enum SecurityCheckResult: Sendable {
 /// Persistent store for quarantined skills that require review
 public actor QuarantineStore {
     private var quarantinedItems: [String: QuarantineItem] = [:]
+    private let storageURL: URL
 
-    private static var storageURL: URL {
+    private static func defaultStorageURL() -> URL {
         let fm = FileManager.default
         let appSupportURL = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let supportDir = appSupportURL.appendingPathComponent("SkillsInspector", isDirectory: true)
@@ -277,7 +280,8 @@ public actor QuarantineStore {
         }
     }
 
-    public init() {
+    public init(storageURL: URL? = nil) {
+        self.storageURL = storageURL ?? Self.defaultStorageURL()
         // Load deferred to first access
     }
 
@@ -376,11 +380,11 @@ public actor QuarantineStore {
 
     private func save() {
         let data = try? JSONEncoder().encode(quarantinedItems)
-        try? data?.write(to: Self.storageURL, options: .atomic)
+        try? data?.write(to: storageURL, options: .atomic)
     }
 
     private func load() {
-        guard let data = try? Data(contentsOf: Self.storageURL),
+        guard let data = try? Data(contentsOf: storageURL),
               let decoded = try? JSONDecoder().decode([String: QuarantineItem].self, from: data) else {
             return
         }

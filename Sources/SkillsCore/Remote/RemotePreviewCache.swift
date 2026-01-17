@@ -68,7 +68,7 @@ public struct RemotePreviewCache: Sendable {
             let data = try encoder.encode(preview)
 
             // Check cache size before storing
-            if !ensureCacheSizeLimit() {
+            if !ensureCacheSizeLimit(additionalBytes: data.count) {
                 // Cache eviction failed; skip storing to stay under limit
                 return
             }
@@ -81,7 +81,7 @@ public struct RemotePreviewCache: Sendable {
 
     /// Evicts expired and excess cache entries to stay under maxCacheBytes.
     /// Returns true if cache is within limits, false if eviction failed.
-    private func ensureCacheSizeLimit() -> Bool {
+    private func ensureCacheSizeLimit(additionalBytes: Int) -> Bool {
         guard let enumerator = FileManager.default.enumerator(at: cacheRoot, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]) else {
             return true
         }
@@ -112,16 +112,17 @@ public struct RemotePreviewCache: Sendable {
         }
 
         // If still over limit, remove oldest entries until under limit
-        if currentSize > maxCacheBytes {
+        let targetSize = currentSize + additionalBytes
+        if targetSize > maxCacheBytes {
             cacheEntries.sort { $0.modified < $1.modified }
             for entry in cacheEntries {
-                if currentSize <= maxCacheBytes { break }
+                if currentSize + additionalBytes <= maxCacheBytes { break }
                 try? FileManager.default.removeItem(at: entry.url)
                 currentSize -= entry.size
             }
         }
 
-        return currentSize <= maxCacheBytes
+        return currentSize + additionalBytes <= maxCacheBytes
     }
 
     public func loadManifest(slug: String, version: String?) -> CachedManifest? {
@@ -154,7 +155,7 @@ public struct RemotePreviewCache: Sendable {
             let data = try encoder.encode(payload)
 
             // Check cache size before storing
-            if !ensureCacheSizeLimit() {
+            if !ensureCacheSizeLimit(additionalBytes: data.count) {
                 // Cache eviction failed; skip storing to stay under limit
                 return
             }

@@ -2,7 +2,7 @@ import XCTest
 @testable import SkillsCore
 
 final class MultiTargetSkillInstallerTests: XCTestCase {
-    func testBestEffortInstallContinuesOnFailure() async throws {
+    func testRollbackOnFailure() async throws {
         let fm = FileManager.default
         let temp = fm.temporaryDirectory.appendingPathComponent("multi-\(UUID().uuidString)", isDirectory: true)
         let skillDir = temp.appendingPathComponent("skill-one", isDirectory: true)
@@ -29,7 +29,11 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
 
-        let manifest = RemoteArtifactManifest(sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL))
+        let manifest = RemoteArtifactManifest(
+            name: "skill-one",
+            version: "1.0.0",
+            sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL)
+        )
         let installer = MultiTargetSkillInstaller()
         let outcome = try await installer.install(
             archiveURL: archiveURL,
@@ -42,19 +46,17 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
             policy: .permissive
         )
 
-        // Best-effort: success should be preserved, failure recorded, no rollback
-        XCTAssertFalse(outcome.didRollback)
-        XCTAssertEqual(outcome.successes.count, 1)
-        XCTAssertEqual(outcome.failures.count, 1)
-        XCTAssertTrue(outcome.successes[.codex] != nil)
-        XCTAssertTrue(outcome.failures[.copilot] != nil)
+        // Rollback: no successful installs should remain
+        XCTAssertTrue(outcome.didRollback)
+        XCTAssertTrue(outcome.successes.isEmpty)
+        XCTAssertEqual(outcome.failures.count, 2)
         let installedPath = goodRoot.appendingPathComponent("skill-one")
-        XCTAssertTrue(fm.fileExists(atPath: installedPath.path))
+        XCTAssertFalse(fm.fileExists(atPath: installedPath.path))
     }
 
     // MARK: - Post-Install Validation Tests
 
-    func testDefaultPostInstallValidatorPasses() {
+    func testDefaultPostInstallValidatorPasses() throws {
         let fm = FileManager.default
         let temp = fm.temporaryDirectory.appendingPathComponent("validator-\(UUID().uuidString)", isDirectory: true)
         let skillDir = temp.appendingPathComponent("test-skill", isDirectory: true)
@@ -74,7 +76,8 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
             filesCopied: 1,
             totalBytes: 100,
             archiveSHA256: nil,
-            contentSHA256: nil
+            contentSHA256: nil,
+            backupURL: nil
         )
 
         let validator = DefaultPostInstallValidator()
@@ -83,7 +86,7 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
         XCTAssertNil(error, "Default validator should pass for valid skill")
     }
 
-    func testDefaultPostInstallValidatorFailsMissingSKILL() {
+    func testDefaultPostInstallValidatorFailsMissingSKILL() throws {
         let fm = FileManager.default
         let temp = fm.temporaryDirectory.appendingPathComponent("validator-\(UUID().uuidString)", isDirectory: true)
         let skillDir = temp.appendingPathComponent("test-skill", isDirectory: true)
@@ -97,7 +100,8 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
             filesCopied: 0,
             totalBytes: 0,
             archiveSHA256: nil,
-            contentSHA256: nil
+            contentSHA256: nil,
+            backupURL: nil
         )
 
         let validator = DefaultPostInstallValidator()
@@ -143,7 +147,11 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
 
-        let manifest = RemoteArtifactManifest(sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL))
+        let manifest = RemoteArtifactManifest(
+            name: "skill-custom",
+            version: "1.0.0",
+            sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL)
+        )
 
         // Test with passing validator
         let passingValidator = CustomValidator(shouldFail: false)
@@ -157,7 +165,7 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
         )
 
         XCTAssertFalse(outcomePass.didRollback)
-        XCTAssertTrue(outcomePass.successes[.codex] != nil)
+        XCTAssertTrue(outcomePass.successes[AgentKind.codex] != nil)
 
         // Clean up for next test
         try? fm.removeItem(at: targetRoot.appendingPathComponent("skill-custom"))
@@ -165,18 +173,17 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
         // Test with failing validator
         let failingValidator = CustomValidator(shouldFail: true)
         let installerWithFail = MultiTargetSkillInstaller(validator: failingValidator)
-        do {
-            _ = try await installerWithFail.install(
-                archiveURL: archiveURL,
-                targets: [.codex(targetRoot)],
-                overwrite: false,
-                manifest: manifest,
-                policy: .permissive
-            )
-            XCTFail("Expected custom validation failure")
-        } catch RemoteInstallError.validationFailed(let message) {
-            XCTAssertEqual(message, "Custom validation failed")
-        }
+        let outcomeFail = try await installerWithFail.install(
+            archiveURL: archiveURL,
+            targets: [.codex(targetRoot)],
+            overwrite: false,
+            manifest: manifest,
+            policy: .permissive
+        )
+
+        XCTAssertTrue(outcomeFail.didRollback)
+        XCTAssertTrue(outcomeFail.successes.isEmpty)
+        XCTAssertEqual(outcomeFail.failures[.codex], "Validation failed: Custom validation failed")
     }
 
     func testMultiTargetWithValidationFailure() async throws {
@@ -216,7 +223,11 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
 
-        let manifest = RemoteArtifactManifest(sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL))
+        let manifest = RemoteArtifactManifest(
+            name: "skill-multi",
+            version: "1.0.0",
+            sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL)
+        )
         let validator = TargetSpecificValidator()
         let installer = MultiTargetSkillInstaller(validator: validator)
 
@@ -228,11 +239,11 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
             policy: .permissive
         )
 
-        // Best-effort: Codex should succeed, Claude should fail, no rollback
-        XCTAssertFalse(outcome.didRollback)
-        XCTAssertTrue(outcome.successes[.codex] != nil)
-        XCTAssertTrue(outcome.failures[.claude]?.contains("Claude validation failed") ?? false)
-        XCTAssertTrue(fm.fileExists(atPath: codexRoot.appendingPathComponent("skill-multi").path))
+        // Rollback: no installs should remain after validation failure
+        XCTAssertTrue(outcome.didRollback)
+        XCTAssertTrue(outcome.successes.isEmpty)
+        XCTAssertTrue(outcome.failures[AgentKind.claude]?.contains("Claude validation failed") ?? false)
+        XCTAssertFalse(fm.fileExists(atPath: codexRoot.appendingPathComponent("skill-multi").path))
         XCTAssertFalse(fm.fileExists(atPath: claudeRoot.appendingPathComponent("skill-multi").path))
     }
 
@@ -265,7 +276,11 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
 
-        let manifest = RemoteArtifactManifest(sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL))
+        let manifest = RemoteArtifactManifest(
+            name: "skill-all",
+            version: "1.0.0",
+            sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL)
+        )
         let installer = MultiTargetSkillInstaller()
 
         let outcome = try await installer.install(
@@ -282,9 +297,9 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
 
         XCTAssertFalse(outcome.didRollback)
         XCTAssertEqual(outcome.successes.count, 3)
-        XCTAssertTrue(outcome.successes[.codex] != nil)
-        XCTAssertTrue(outcome.successes[.claude] != nil)
-        XCTAssertTrue(outcome.successes[.copilot] != nil)
+        XCTAssertTrue(outcome.successes[AgentKind.codex] != nil)
+        XCTAssertTrue(outcome.successes[AgentKind.claude] != nil)
+        XCTAssertTrue(outcome.successes[AgentKind.copilot] != nil)
         XCTAssertTrue(outcome.failures.isEmpty)
 
         // Verify all three installations exist
@@ -326,7 +341,11 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
 
-        let manifest = RemoteArtifactManifest(sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL))
+        let manifest = RemoteArtifactManifest(
+            name: "skill-rate",
+            version: "1.0.0",
+            sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL)
+        )
         let installer = MultiTargetSkillInstaller()
 
         let outcome = try await installer.install(
@@ -341,17 +360,14 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
             policy: .permissive
         )
 
-        // Calculate success rate
+        // Rollback forces 0% success rate on any failure
         let totalAttempts = outcome.successes.count + outcome.failures.count
-        let successRate = Double(outcome.successes.count) / Double(totalAttempts) * 100
+        let successRate = totalAttempts == 0 ? 0 : Double(outcome.successes.count) / Double(totalAttempts) * 100
 
-        // 2 out of 3 = 66.67%, which is below 90% threshold
-        XCTAssertEqual(successRate, 66.67, accuracy: 0.1)
-        XCTAssertLessThan(successRate, 90.0, "Success rate should be below 90% threshold")
-
-        // Verify partial success
-        XCTAssertEqual(outcome.successes.count, 2)
-        XCTAssertEqual(outcome.failures.count, 1)
+        XCTAssertEqual(successRate, 0, accuracy: 0.1)
+        XCTAssertTrue(outcome.didRollback)
+        XCTAssertTrue(outcome.successes.isEmpty)
+        XCTAssertEqual(outcome.failures.count, 3)
     }
 
     func testHighSuccessRate() async throws {
@@ -384,7 +400,11 @@ final class MultiTargetSkillInstallerTests: XCTestCase {
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
 
-        let manifest = RemoteArtifactManifest(sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL))
+        let manifest = RemoteArtifactManifest(
+            name: "skill-high",
+            version: "1.0.0",
+            sha256: try RemoteSkillInstaller.sha256Hex(of: archiveURL)
+        )
         let installer = MultiTargetSkillInstaller()
 
         let outcome = try await installer.install(

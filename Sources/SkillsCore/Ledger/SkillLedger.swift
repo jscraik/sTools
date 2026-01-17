@@ -90,7 +90,7 @@ public actor SkillLedger {
         """
         let stmt = try prepare(sql: sql)
         defer { sqlite3_finalize(stmt) }
-        let timestamp = SkillLedger.isoFormatter.string(from: Date())
+        let timestamp = SkillLedger.isoFormatter.string(from: input.timestamp ?? Date())
         var index: Int32 = 1
         bindText(stmt, index, timestamp); index += 1
         bindText(stmt, index, input.eventType.rawValue); index += 1

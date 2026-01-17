@@ -3,6 +3,13 @@
 You are operating inside an **autonomous coding loop**.
 Each loop iteration starts from fresh context; **the filesystem is your memory**.
 
+## Fast Start (required)
+
+To avoid timeouts, **limit file reads**:
+- Read `.ralph/AGENTS.md` and `.ralph/prd.json` first.
+- Read only the **last 200 lines** of `.ralph/progress.md`.
+- Read `standards.md`, `engineering-guidance.md`, and `README.checklist.md` once per iteration; do not scan large repo docs unless needed.
+
 ## Files you must use as memory
 - The PRD file (`prd.json` or `PRD.md`) — task list and completion status
 - `progress.md` — append-only learnings across iterations (keep short + actionable)

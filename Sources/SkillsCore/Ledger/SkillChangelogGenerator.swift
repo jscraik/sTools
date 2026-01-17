@@ -56,7 +56,7 @@ public struct SkillChangelogGenerator: Sendable {
         lines.append("## \(title)")
         lines.append("_Generated: \(DateFormatter.shortDateTime.string(from: Date()))_")
         lines.append("")
-        lines.append("**This is a tamper-evident audit trail. All entries are cryptographically verifiable.**")
+        lines.append("**This audit trail is tamper-evident and cryptographically verifiable when exported with a signature.**")
         lines.append("")
 
         for key in sortedKeys {
@@ -192,7 +192,7 @@ public struct SkillChangelogGenerator: Sendable {
         }
 
         if let hash = event.manifestSHA256 {
-            provenance.append("SHA256: `\(hash.prefix(16))...`")
+            provenance.append("SHA256: `\(hash)`")
         }
 
         if !provenance.isEmpty {

@@ -43,6 +43,17 @@ This directory contains your Ralph Loop configuration and state.
 2. Edit your PRD (JSON or Markdown) with your tasks
 3. Run: `ralph run --agent codex`
 
+## Quality Gates
+
+Current gates (from `ralph.toml`):
+
+```bash
+swift build -c debug --product sTools
+swift test
+swift package skills-lint
+swift run skillsctl scan --repo . --allow-empty
+```
+
 ## Commands
 
 ```bash

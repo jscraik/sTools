@@ -6,7 +6,7 @@ owner: sTools PM/Eng Lead
 date: 2026-01-14
 audience: sTools core team, security reviewers
 status: draft
-related_tech_spec: .specs/tech-spec-output.md
+related_tech_spec: .spec/tech-spec-output.md
 ---
 
 # Trustworthy Skills Inspector — PRD
@@ -74,9 +74,9 @@ This release focuses on cryptographic verification, reproducible publishing, cro
 ### STORY-004 — As a Cross-IDE User, I want one install to register the skill for Codex, Claude Code, and Copilot so that I do not repeat steps.
 **Priority:** Should
 **Acceptance criteria:**
-- [ ] A successful install writes to all selected IDE targets.
-- [ ] Each target records its own success or failure in the ledger.
-- [ ] The UI surfaces per-IDE status after install.
+- [ ] A successful install writes to all selected IDE targets; if any target fails, all targets roll back to the last-good version.
+- [ ] Each target records its outcome in the ledger, including rollback reasons where applicable.
+- [ ] The UI surfaces per-IDE status and rollback summary after install.
 
 ### STORY-005 — As an Auditor, I want a signed changelog of installs and updates so that I can trace incidents to exact versions.
 **Priority:** Should
@@ -96,9 +96,10 @@ This release focuses on cryptographic verification, reproducible publishing, cro
 ### Install/Update
 - Require manifest containing checksum (sha256) and signer key ID; verify before unzip; fail closed.
 - Support detached Ed25519 signatures; allow multiple trusted keys per skill for rotation; maintain `revokedKeys` list per skill.
-- Size/MIME limits and archive structure validation (no symlinks, no absolute paths, bounded file count).
+- Size/MIME limits and archive structure validation (zip only, no symlinks, no absolute paths, bounded file count).
 - Consent gate: API-based preview labeled “Safe preview from server”; integrity only confirmed on download + verify.
-- Rollback: keep last-good version and restore automatically on failure.
+- Rollback: keep last-good version and restore automatically on failure; multi-target installs are all-or-nothing with rollback across all targets.
+- ACIP scanning: scan remote skill contents before install; quarantine or block on high/critical matches with a review queue.
 
 ### Publish
 - Replace `bunx ...@latest` with pinned version plus checksum; vendor or lock via SRI; record tool hash.
@@ -108,6 +109,7 @@ This release focuses on cryptographic verification, reproducible publishing, cro
 ### Versioning and Changelog
 - Local append-only ledger (SQLite) of installs/updates/removals with version, hash, signer key, source, IDE targets, and per-target result.
 - Auto-generate markdown changelog per skill from ledger entries.
+- Changelog exports are signed (Ed25519) with public key included for audit verification.
 
 ### Cross-IDE Unification
 - Adapter layer writes validated artifacts into:
@@ -151,6 +153,8 @@ This release focuses on cryptographic verification, reproducible publishing, cro
 - Capture counts of verified installs, blocked downloads, publish runs; include app version and anonymized install ID; no PII. Metrics are recorded only when telemetryOptIn is enabled (default off). Retain telemetry locally for 30 days.
 - When telemetryOptIn is off, the app performs no network telemetry calls and does not enqueue outbound payloads.
 - Telemetry schema is allowlisted (eventName, timestamp, appVersion, anonymizedInstallId, counts) and rejected if extra fields are present.
+### Key Distribution
+- Fetch a signed keyset from the catalog; update local trust store only when the keyset signature verifies against a pinned root key.
 
 ## 7) Non-Functional Requirements
 - Security: OWASP Top 10:2025 A8 Software Integrity; fail-closed verification; local trust store at `~/Library/Application Support/SkillsInspector/trust.json`.

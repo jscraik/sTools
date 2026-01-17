@@ -381,39 +381,45 @@ This is the work queue for the meta-skill-integration feature. Each item should 
 
 ### Story S11: Add WorkflowDashboardView to sTools app
 
-- [ ] **Task 1**: Create WorkflowDashboardView
+- [x] **Task 1**: Create WorkflowDashboardView
   - Spec reference: `.ralph/prd.json` story S11 acceptance (lines 236-243)
-  - Files to create: `Sources/SkillsInspector/Workflow/WorkflowDashboardView.swift`
+  - Files created: `Sources/SkillsInspector/Workflow/WorkflowDashboardView.swift`
   - Expected change: Dashboard with stage picker
+  - **Completed**: Dashboard view with stage picker and summary cards.
 
-- [ ] **Task 2**: Create WorkflowDetailView
+- [x] **Task 2**: Create WorkflowDetailView
   - Spec reference: `.ralph/prd.json` story S11 files (line 247)
-  - Files to create: `Sources/SkillsInspector/Workflow/WorkflowDetailView.swift`
+  - Files created: `Sources/SkillsInspector/Workflow/WorkflowDetailView.swift`
   - Expected change: Drill-down detail view
+  - **Completed**: Detail view with stage history and validation details.
 
-- [ ] **Task 3**: Create WorkflowRow component
+- [x] **Task 3**: Create WorkflowRow component
   - Spec reference: `.ralph/prd.json` story S11 files (line 248)
-  - Files to create: `Sources/SkillsInspector/Workflow/WorkflowRow.swift`
+  - Files created: `Sources/SkillsInspector/Workflow/WorkflowRow.swift`
   - Expected change: Row component for workflow list
+  - **Completed**: Row component with stage badge and metadata.
 
-- [ ] **Task 4**: Create WorkflowProgressIndicator
+- [x] **Task 4**: Create WorkflowProgressIndicator
   - Spec reference: `.ralph/prd.json` story S11 files (line 249)
-  - Files to create: `Sources/SkillsInspector/Workflow/WorkflowProgressIndicator.swift`
+  - Files created: `Sources/SkillsInspector/Workflow/WorkflowProgressIndicator.swift`
   - Expected change: Visual progress indicator
+  - **Completed**: Progress indicator with stage markers.
 
 ### Story S12: Add comprehensive integration tests
 
-- [ ] **Task 1**: Create integration test suite
+- [x] **Task 1**: Create integration test suite
   - Spec reference: `.ralph/prd.json` story S12 acceptance (lines 259-268)
-  - Files to create: `Tests/SkillsCoreTests/IntegrationTests.swift`
+  - Files created: `Tests/SkillsCoreTests/IntegrationTests.swift`
   - Expected change: End-to-end workflow tests
+  - **Completed**: Added ACIP quarantine, changelog signing, and keyset verification tests.
 
 ### Story S13: Update documentation and README
 
-- [ ] **Task 1**: Update README.md
+- [x] **Task 1**: Update README.md
   - Spec reference: `.ralph/prd.json` story S13 acceptance (lines 281-288)
   - Files to modify: `README.md`
   - Expected change: Document new CLI commands and architecture
+  - **Completed**: Added remote verification, cross-IDE installs, and signed changelog features.
 
 - [ ] **Task 2**: Update AGENTS.md
   - Spec reference: `.ralph/prd.json` story S13 files (line 292)

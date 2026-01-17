@@ -1,12 +1,14 @@
+import Dispatch
 import Foundation
 import ArgumentParser
 import SkillsCore
 
-struct SkillsCtl: ParsableCommand {
+@available(macOS 10.15, macCatalyst 13, iOS 13, tvOS 13, watchOS 6, *)
+struct SkillsCtl: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "skillsctl",
         abstract: "Scan/validate/sync Codex + Claude SKILL.md directories.",
-        subcommands: [Scan.self, Fix.self, SyncCheck.self, Index.self, Search.self, SearchIndexCmd.self, Remote.self, Publish.self, Spec.self, WorkflowCommand.self, Completion.self]
+        subcommands: [Scan.self, Fix.self, SyncCheck.self, Index.self, Search.self, SearchIndexCmd.self, Remote.self, Publish.self, Spec.self, SecurityCommand.self, QuarantineCommand.self, WorkflowCommand.self, Completion.self]
     )
 }
 
@@ -1158,7 +1160,11 @@ struct Index: ParsableCommand {
 }
 
 // Entry point
-SkillsCtl.main()
+Task {
+    await SkillsCtl.main()
+    exit(EXIT_SUCCESS)
+}
+dispatchMain()
 
 // Helper to run async code from synchronous context
 func runBlocking<T: Sendable>(_ operation: @Sendable @escaping () async -> T) -> T {

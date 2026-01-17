@@ -18,7 +18,14 @@ After this change, users can preview remote skills safely, verify them before in
 - [x] (2026-01-13) Add deterministic publish pipeline with signed attestation and pinned tool hash enforcement.
 - [x] (2026-01-13) Label API-based preview as “Safe preview from server” and gate bulk actions via feature flags.
 - [x] (2026-01-13) Add manifest caching, per-skill signer trust scopes, and telemetry stubs (opt-in).
-- [ ] (2026-01-13) Run validation: swift test (targeted + full), UI snapshot checks, and CLI smoke commands.
+- [x] (2026-01-16) Integrate ACIP scanning into remote installs with quarantine persistence and config-aware filtering.
+- [x] (2026-01-16) Enforce archive MIME checks and update multi-target installs to all-or-nothing rollback semantics.
+- [x] (2026-01-16) Add signed changelog exports with per-device key stored in Keychain and embedded signature block.
+- [x] (2026-01-16) Enforce telemetry attribute allowlist and include appVersion in telemetry records.
+- [x] (2026-01-16) Add signed keyset fetch/verification and refresh trust store when a pinned root key is available.
+- [x] (2026-01-16) Record ledger verify events for bulk verification operations.
+- [x] (2026-01-16) Add integration tests for ACIP quarantine, changelog signing, and keyset verification.
+- [ ] (2026-01-16) Run validation: swift test (targeted + full), UI snapshot checks, and CLI smoke commands.
 
 ## Surprises & Discoveries
 
@@ -54,6 +61,7 @@ After this change, users can preview remote skills safely, verify them before in
 - (2026-01-13) Ledger-backed changelog generation is now available in the UI, with SQLite-backed event storage and a basic ledger history panel. Remote installs now emit ledger entries for successful and failed installs.
 - (2026-01-13) skillsctl remote now supports preview, verify, and install/update flows with structured JSON errors and schema-validated outputs.
 - (2026-01-13) Publish pipeline now builds deterministic zip artifacts, signs attestation with an Ed25519 key, and enforces tool hash pinning before running the publisher.
+- (2026-01-16) Remote installs now enforce ACIP scanning, MIME checks, and all-or-nothing rollback across targets. Changelog exports are signed with a per-device key, telemetry is schema-sanitized, and trust stores can refresh from a signed remote keyset when configured.
 
 ## Context and Orientation
 
@@ -74,6 +82,8 @@ Extend the installer path to support cross-IDE adapter installs. Add an adapter 
 Add the SQLite ledger and changelog generator under Sources/SkillsCore/Ledger. Emit ledger events on install, update, and removal. Update the UI ChangelogView to read from the ledger and export markdown.
 
 Extend skillsctl in Sources/skillsctl/main.swift with preview/verify/install subcommands and JSON errors that include error codes, messages, and request IDs. Ensure CLI output matches existing schema validation patterns in docs/schema.
+
+Close remaining gap items by wiring ACIP scanning into the remote install flow (quarantine/block), enforcing MIME checks on archives, switching multi-target installs to rollback on partial failures, and signing changelog exports with a per-device key stored in Keychain. Add a signed keyset fetch endpoint in the remote client and refresh the local trust store only when the keyset signature verifies against a pinned root key. Record ledger verify events during bulk verification and add integration tests that exercise ACIP quarantine, changelog signing, and keyset verification.
 
 ## Concrete Steps
 

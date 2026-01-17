@@ -13,16 +13,38 @@ public enum TelemetryEventType: String, Sendable {
 public struct TelemetryEvent: Codable, Sendable {
     public let name: String
     public let timestamp: Date
+    public let appVersion: String
     public let attributes: [String: String]
 
-    public init(name: String, timestamp: Date = Date(), attributes: [String: String] = [:]) {
+    public init(
+        name: String,
+        timestamp: Date = Date(),
+        appVersion: String = AppVersion.current,
+        attributes: [String: String] = [:]
+    ) {
         self.name = name
         self.timestamp = timestamp
+        self.appVersion = appVersion
         self.attributes = attributes
     }
 
+    enum CodingKeys: String, CodingKey {
+        case name
+        case timestamp
+        case appVersion
+        case attributes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        appVersion = try container.decodeIfPresent(String.self, forKey: .appVersion) ?? AppVersion.current
+        attributes = try container.decodeIfPresent([String: String].self, forKey: .attributes) ?? [:]
+    }
+
     public static func verifiedInstall(skillSlug: String, version: String, installerId: String) -> TelemetryEvent {
-        TelemetryEvent(
+        return TelemetryEvent(
             name: TelemetryEventType.verifiedInstall.rawValue,
             attributes: [
                 "skill_slug": skillSlug,
@@ -33,7 +55,7 @@ public struct TelemetryEvent: Codable, Sendable {
     }
 
     public static func blockedDownload(skillSlug: String, reason: String, installerId: String) -> TelemetryEvent {
-        TelemetryEvent(
+        return TelemetryEvent(
             name: TelemetryEventType.blockedDownload.rawValue,
             attributes: [
                 "skill_slug": skillSlug,
@@ -44,7 +66,7 @@ public struct TelemetryEvent: Codable, Sendable {
     }
 
     public static func publishRun(skillSlug: String, version: String, success: Bool, publisherId: String) -> TelemetryEvent {
-        TelemetryEvent(
+        return TelemetryEvent(
             name: TelemetryEventType.publishRun.rawValue,
             attributes: [
                 "skill_slug": skillSlug,
@@ -53,6 +75,38 @@ public struct TelemetryEvent: Codable, Sendable {
                 "publisher_id": publisherId
             ]
         )
+    }
+}
+
+public enum TelemetrySchema {
+    private static let allowedAttributeKeys: Set<String> = [
+        "skill_slug",
+        "version",
+        "reason",
+        "installer_id",
+        "publisher_id",
+        "success"
+    ]
+
+    public static func sanitize(_ event: TelemetryEvent) -> TelemetryEvent? {
+        let keys = Set(event.attributes.keys)
+        guard keys.isSubset(of: allowedAttributeKeys) else {
+            return nil
+        }
+        return event
+    }
+}
+
+public enum AppVersion {
+    public static var current: String {
+        let bundle = Bundle.main
+        if let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+            return version
+        }
+        if let version = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String {
+            return version
+        }
+        return "unknown"
     }
 }
 
@@ -86,9 +140,10 @@ public struct TelemetryStore: Sendable {
         return TelemetryStore(
             record: { event in
                 do {
+                    guard let sanitized = TelemetrySchema.sanitize(event) else { return }
                     let encoder = JSONEncoder()
                     encoder.dateEncodingStrategy = .iso8601
-                    let data = try encoder.encode(event)
+                    let data = try encoder.encode(sanitized)
                     if let line = String(data: data, encoding: .utf8) {
                         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                         if FileManager.default.fileExists(atPath: url.path) {
@@ -111,11 +166,13 @@ public struct TelemetryStore: Sendable {
                       let contents = try? String(contentsOfFile: url.path, encoding: .utf8) else {
                     return []
                 }
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
                 return contents.components(separatedBy: "\n")
                     .filter { !$0.isEmpty }
                     .compactMap { line -> TelemetryEvent? in
                         guard let data = line.data(using: .utf8) else { return nil }
-                        return try? JSONDecoder().decode(TelemetryEvent.self, from: data)
+                        return try? decoder.decode(TelemetryEvent.self, from: data)
                     }
                     .filter { $0.timestamp > cutoffDate }
             },
@@ -140,9 +197,10 @@ public struct TelemetryClient: Sendable {
     public static func file(url: URL) -> TelemetryClient {
         TelemetryClient { event in
             do {
+                guard let sanitized = TelemetrySchema.sanitize(event) else { return }
                 let encoder = JSONEncoder()
                 encoder.dateEncodingStrategy = .iso8601
-                let data = try encoder.encode(event)
+                let data = try encoder.encode(sanitized)
                 if let line = String(data: data, encoding: .utf8) {
                     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                     if FileManager.default.fileExists(atPath: url.path) {

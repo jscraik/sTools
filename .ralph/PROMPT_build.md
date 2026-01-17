@@ -21,6 +21,7 @@ Implement **exactly one** task end-to-end, apply backpressure, then commit.
    - Study `.ralph/AGENTS.md` (how to build, test, lint, format).
    - Study the tracker file and `.ralph/progress.md`.
    - Critical guardrail: **do not assume something is missing** — confirm by searching the repo.
+   - If remote keyset refresh is involved, read `STOOLS_KEYSET_ROOT_KEY` notes in `.ralph/AGENTS.md`.
 
 1. **Select the task**
    - Prefer the task selected by the orchestrator (if provided).
@@ -32,7 +33,7 @@ Implement **exactly one** task end-to-end, apply backpressure, then commit.
    - Avoid large refactors unless required to ship the task.
 
 3. **Backpressure (required)**
-   - Run the quality gate commands listed in `.ralph/AGENTS.md`.
+   - Run the quality gate commands listed in `.ralph/AGENTS.md` and configured in `.ralph/ralph.toml`.
    - Fix failures until they pass.
    - If you add new tooling/commands, update `.ralph/AGENTS.md` (keep it deterministic and short).
 

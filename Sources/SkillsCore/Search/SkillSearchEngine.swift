@@ -158,8 +158,18 @@ public actor SkillSearchEngine {
     ) throws {
         guard db != nil else { throw SearchError.databaseNotOpen }
 
-        // Extract content from all markdown files
-        let allContent = extractContent(from: skill)
+        // Remove any existing entry for this slug to avoid duplicate rows in FTS.
+        let deleteExisting = "DELETE FROM skills_fts WHERE skillSlug = ?;"
+        let deleteStmt = prepare(deleteExisting)
+        if let deleteStmt {
+            sqlite3_bind_text(deleteStmt, 1, (skill.slug as NSString).utf8String, -1, nil)
+            sqlite3_step(deleteStmt)
+            sqlite3_finalize(deleteStmt)
+        }
+
+        // Combine extracted metadata with provided content
+        let allContent = [extractContent(from: skill), content]
+            .joined(separator: " ")
         let tags = skill.tags?.joined(separator: " ") ?? ""
         let agent = skill.agent.rawValue
 
@@ -229,17 +239,15 @@ public actor SkillSearchEngine {
         WHERE skills_fts MATCH ?
         """
 
-        var params: [String] = [query]
+        let normalizedQuery = normalizeQuery(query)
 
         // Apply filters
-        if let agent = filters.agent {
+        if filters.agent != nil {
             sql += " AND agent = ?"
-            params.append(agent.rawValue)
         }
 
-        if let minRank = filters.minRank {
+        if filters.minRank != nil {
             sql += " AND rankUnindexed >= ?"
-            params.append(String(minRank))
         }
 
         sql += " ORDER BY rank LIMIT \(limit)"
@@ -247,8 +255,18 @@ public actor SkillSearchEngine {
         let stmt = prepare(sql)
         defer { sqlite3_finalize(stmt) }
 
-        for (index, param) in params.enumerated() {
-            sqlite3_bind_text(stmt, Int32(index + 1), (param as NSString).utf8String, -1, nil)
+        var bindIndex: Int32 = 1
+        sqlite3_bind_text(stmt, bindIndex, (normalizedQuery as NSString).utf8String, -1, nil)
+        bindIndex += 1
+
+        if let agent = filters.agent {
+            sqlite3_bind_text(stmt, bindIndex, (agent.rawValue as NSString).utf8String, -1, nil)
+            bindIndex += 1
+        }
+
+        if let minRank = filters.minRank {
+            sqlite3_bind_double(stmt, bindIndex, minRank)
+            bindIndex += 1
         }
 
         var results: [SearchResult] = []
@@ -410,6 +428,12 @@ public actor SkillSearchEngine {
         }
 
         return content.joined(separator: " ")
+    }
+
+    private func normalizeQuery(_ query: String) -> String {
+        query
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Types
