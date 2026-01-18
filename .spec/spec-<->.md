@@ -1,4 +1,6 @@
 # Trustworthy Skills Inspector — PRD + Technical Spec
+**Status:** Superseded by `.spec/spec-2026-01-14-trustworthy-skills-inspector-prd.md` and `.spec/tech-spec-output.md`.
+**Note:** This combined document is retained for historical reference only.
 Owner: sTools PM/Eng Lead  
 Date: 2026-01-12  
 Audience: sTools core team, security reviewers

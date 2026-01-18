@@ -105,10 +105,6 @@ public struct SearchResultRow: View {
             }
 
             Divider()
-
-            Button("Show Skill Info") {
-                // TODO: Implement skill info sheet
-            }
         }
     }
 

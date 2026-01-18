@@ -7,6 +7,10 @@ public struct SecuritySettingsView: View {
     @State private var quarantineStore = QuarantineStore()
     @State private var quarantinedCount = 0
     @State private var isLoading = false
+    @State private var allowlistDraft = ""
+    @State private var blocklistDraft = ""
+    @State private var isAllowlistSheetPresented = false
+    @State private var isBlocklistSheetPresented = false
 
     public init() {}
 
@@ -20,6 +24,9 @@ public struct SecuritySettingsView: View {
                     Text("Strict").tag(Preset.strict)
                 }
                 .pickerStyle(.segmented)
+                .onChange(of: securityPreset) { _, newValue in
+                    applyPreset(newValue)
+                }
 
                 Text(presetDescription)
                     .font(.system(size: DesignTokens.Typography.BodySmall.size))
@@ -86,17 +93,16 @@ public struct SecuritySettingsView: View {
                         .foregroundStyle(DesignTokens.Colors.Text.secondary)
                 } else {
                     ForEach(Array(securityConfig.allowlist.enumerated()), id: \.offset) { _, pattern in
-                        Text(pattern)
-                            .font(.system(size: DesignTokens.Typography.Body.size))
-                            .monospaced()
-                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                        patternRow(pattern) {
+                            removeAllowlistPattern(pattern)
+                        }
                     }
                 }
 
                 Button("Add Allowlist Pattern") {
-                    // TODO: Implement add pattern sheet
+                    allowlistDraft = ""
+                    isAllowlistSheetPresented = true
                 }
-                .disabled(true)
             } header: {
                 Text("Allowlist")
             } footer: {
@@ -110,17 +116,16 @@ public struct SecuritySettingsView: View {
                         .foregroundStyle(DesignTokens.Colors.Text.secondary)
                 } else {
                     ForEach(Array(securityConfig.blocklist.enumerated()), id: \.offset) { _, pattern in
-                        Text(pattern)
-                            .font(.system(size: DesignTokens.Typography.Body.size))
-                            .monospaced()
-                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                        patternRow(pattern) {
+                            removeBlocklistPattern(pattern)
+                        }
                     }
                 }
 
                 Button("Add Blocklist Pattern") {
-                    // TODO: Implement add pattern sheet
+                    blocklistDraft = ""
+                    isBlocklistSheetPresented = true
                 }
-                .disabled(true)
             } header: {
                 Text("Blocklist")
             } footer: {
@@ -152,6 +157,28 @@ public struct SecuritySettingsView: View {
         .task {
             await loadSettings()
         }
+        .sheet(isPresented: $isAllowlistSheetPresented) {
+            patternSheet(
+                title: "Add Allowlist Pattern",
+                description: "Allowlist patterns bypass security checks. Enter a unique pattern to enable Save.",
+                placeholder: "e.g. \\btrusted\\b",
+                draft: $allowlistDraft,
+                canSave: canAddAllowlistPattern,
+                onCancel: { isAllowlistSheetPresented = false },
+                onSave: addAllowlistPattern
+            )
+        }
+        .sheet(isPresented: $isBlocklistSheetPresented) {
+            patternSheet(
+                title: "Add Blocklist Pattern",
+                description: "Blocklist patterns immediately block content. Enter a unique pattern to enable Save.",
+                placeholder: "e.g. eval\\(",
+                draft: $blocklistDraft,
+                canSave: canAddBlocklistPattern,
+                onCancel: { isBlocklistSheetPresented = false },
+                onSave: addBlocklistPattern
+            )
+        }
     }
 
     // MARK: - Computed Properties
@@ -175,6 +202,22 @@ public struct SecuritySettingsView: View {
         }
     }
 
+    private var trimmedAllowlistDraft: String {
+        allowlistDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedBlocklistDraft: String {
+        blocklistDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canAddAllowlistPattern: Bool {
+        !trimmedAllowlistDraft.isEmpty && !securityConfig.allowlist.contains(trimmedAllowlistDraft)
+    }
+
+    private var canAddBlocklistPattern: Bool {
+        !trimmedBlocklistDraft.isEmpty && !securityConfig.blocklist.contains(trimmedBlocklistDraft)
+    }
+
     // MARK: - Helper Methods
 
     private func bindingForPattern(_ patternId: String) -> Binding<Bool> {
@@ -192,6 +235,67 @@ public struct SecuritySettingsView: View {
                 }
             }
         )
+    }
+
+    private func patternRow(_ pattern: String, onRemove: @escaping () -> Void) -> some View {
+        HStack(spacing: DesignTokens.Spacing.xs) {
+            Text(pattern)
+                .font(.system(size: DesignTokens.Typography.Body.size))
+                .monospaced()
+                .foregroundStyle(DesignTokens.Colors.Text.secondary)
+
+            Spacer()
+
+            Button {
+                onRemove()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.plain)
+            .help("Remove pattern")
+        }
+    }
+
+    private func patternSheet(
+        title: String,
+        description: String,
+        placeholder: String,
+        draft: Binding<String>,
+        canSave: Bool,
+        onCancel: @escaping () -> Void,
+        onSave: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.md) {
+            Text(title)
+                .font(.system(size: DesignTokens.Typography.Heading2.size, weight: DesignTokens.Typography.Heading2.weight))
+
+            Text(description)
+                .font(.system(size: DesignTokens.Typography.Body.size))
+                .foregroundStyle(DesignTokens.Colors.Text.secondary)
+
+            TextField(placeholder, text: draft)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: DesignTokens.Typography.Body.size))
+
+            Spacer()
+
+            HStack {
+                Button("Cancel") {
+                    onCancel()
+                }
+
+                Spacer()
+
+                Button("Save") {
+                    onSave()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canSave)
+            }
+        }
+        .padding(DesignTokens.Spacing.lg)
+        .frame(width: 420, height: 220)
     }
 
     private func severityIcon(_ severity: ACIPScanner.InjectionPattern.Severity) -> some View {
@@ -221,12 +325,49 @@ public struct SecuritySettingsView: View {
         return formatter.string(fromByteCount: Int64(bytes))
     }
 
+    private func applyPreset(_ preset: Preset) {
+        switch preset {
+        case .default:
+            securityConfig = .default
+        case .permissive:
+            securityConfig = .permissive
+        case .strict:
+            securityConfig = .strict
+        }
+    }
+
+    private func addAllowlistPattern() {
+        let pattern = trimmedAllowlistDraft
+        guard !pattern.isEmpty else { return }
+        guard !securityConfig.allowlist.contains(pattern) else { return }
+        securityConfig.allowlist.append(pattern)
+        allowlistDraft = ""
+        isAllowlistSheetPresented = false
+    }
+
+    private func addBlocklistPattern() {
+        let pattern = trimmedBlocklistDraft
+        guard !pattern.isEmpty else { return }
+        guard !securityConfig.blocklist.contains(pattern) else { return }
+        securityConfig.blocklist.append(pattern)
+        blocklistDraft = ""
+        isBlocklistSheetPresented = false
+    }
+
+    private func removeAllowlistPattern(_ pattern: String) {
+        securityConfig.allowlist.removeAll { $0 == pattern }
+    }
+
+    private func removeBlocklistPattern(_ pattern: String) {
+        securityConfig.blocklist.removeAll { $0 == pattern }
+    }
+
     private func loadSettings() async {
         isLoading = true
         defer { isLoading = false }
 
         // Load default config
-        securityConfig = SecurityConfig()
+        applyPreset(securityPreset)
 
         // Load quarantine count
         let items = await quarantineStore.list()

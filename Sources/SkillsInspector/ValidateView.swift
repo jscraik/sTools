@@ -6,7 +6,7 @@ struct ValidateView: View {
     @Binding var severityFilter: Severity?
     @Binding var agentFilter: AgentKind?
     @Binding var searchText: String
-    @State private var selectedFinding: Finding?
+    @State private var selectedFindingID: Finding.ID?
     @State private var showingBaselineSuccess = false
     @State private var baselineMessage = ""
     @State private var showingExportDialog = false
@@ -311,6 +311,7 @@ private extension ValidateView {
     @ViewBuilder
     private var content: some View {
         let filtered = filteredFindings(viewModel.findings)
+        let currentFinding = resolvedFinding(in: filtered)
         HStack(spacing: 0) {
             // Left Pane: Findings List
             VStack(spacing: 0) {
@@ -399,7 +400,7 @@ private extension ValidateView {
             
             // Right Pane: Detail View
             ZStack {
-                if let finding = selectedFinding {
+                if let finding = currentFinding {
                     FindingDetailView(finding: finding)
                         .id(finding.id) // Force refresh on selection change
                         .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -416,7 +417,7 @@ private extension ValidateView {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(DesignTokens.Colors.Background.primary)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selectedFinding?.id)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: currentFinding?.id)
         }
     }
     
@@ -436,24 +437,28 @@ private extension ValidateView {
     }
     
     private func findingsList(_ findings: [Finding]) -> some View {
-        List(findings, selection: $selectedFinding) { finding in
+        List(findings, selection: $selectedFindingID) { finding in
             FindingRowView(finding: finding)
-                .tag(finding)
+                .tag(finding.id)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
                 .contextMenu {
                     contextMenuItems(for: finding)
                 }
-                .cardStyle(selected: finding.id == selectedFinding?.id, tint: finding.severity == .error ? DesignTokens.Colors.Status.error : DesignTokens.Colors.Status.warning)
+                .cardStyle(selected: finding.id == selectedFindingID, tint: finding.severity == .error ? DesignTokens.Colors.Status.error : DesignTokens.Colors.Status.warning)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .listRowSeparator(.hidden)
         .accessibilityLabel("Findings list")
         .onAppear {
-            if selectedFinding == nil && !findings.isEmpty {
-                selectedFinding = findings.first
-            }
+            reconcileSelection(with: findings)
+        }
+        .onChange(of: findings.map(\.id)) {
+            reconcileSelection(with: findings)
+        }
+        .onChange(of: selectedFindingID) {
+            reconcileSelection(with: findings)
         }
         .onKeyPress(.upArrow) {
             navigateFindings(findings, direction: -1)
@@ -466,14 +471,14 @@ private extension ValidateView {
     }
     
     private func navigateFindings(_ findings: [Finding], direction: Int) {
-        guard let current = selectedFinding,
-              let index = findings.firstIndex(where: { $0.id == current.id }) else {
-            selectedFinding = findings.first
+        guard let currentID = selectedFindingID,
+              let index = findings.firstIndex(where: { $0.id == currentID }) else {
+            selectedFindingID = findings.first?.id
             return
         }
         let newIndex = index + direction
         if newIndex >= 0 && newIndex < findings.count {
-            selectedFinding = findings[newIndex]
+            selectedFindingID = findings[newIndex].id
         }
     }
     
@@ -574,6 +579,23 @@ private extension ValidateView {
             current = current.deletingLastPathComponent()
         }
         return nil
+    }
+
+    private func resolvedFinding(in findings: [Finding]) -> Finding? {
+        guard let selectedFindingID else { return findings.first }
+        return findings.first(where: { $0.id == selectedFindingID }) ?? findings.first
+    }
+
+    private func reconcileSelection(with findings: [Finding]) {
+        guard !findings.isEmpty else {
+            selectedFindingID = nil
+            return
+        }
+        if let selectedFindingID,
+           findings.contains(where: { $0.id == selectedFindingID }) {
+            return
+        }
+        selectedFindingID = findings.first?.id
     }
 
     private func filteredFindings(_ findings: [Finding]) -> [Finding] {

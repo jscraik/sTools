@@ -1,49 +1,54 @@
 {
-  "project": "stools-remote-security",
+  "project": "stools-ui-stability",
   "branchName": "ralph",
   "stories": [
     {
-      "id": 9,
+      "id": 1,
       "priority": 1,
-      "title": "Add CLI security/quarantine commands",
-      "description": "Implement skillsctl security scan and quarantine list/approve/block commands, and add unit tests for security check flow.",
+      "title": "Clear stale Validate detail state to prevent flicker",
+      "description": "Reset Validate detail selection and view model state on dataset or route changes to avoid rendering stale detail content and brief blank states.",
       "acceptance": [
-        "skillsctl security scan <skill-path> runs ACIP scan and prints findings",
-        "skillsctl quarantine list shows pending items",
-        "skillsctl quarantine approve <id> marks item approved",
-        "skillsctl quarantine block <id> rejects item",
-        "Unit tests cover security check flow and quarantine state transitions"
+        "Changing the selected skill or data source clears any previous detail view state before new content renders",
+        "Switching between Validate list items never shows a blank detail pane",
+        "No stale detail content appears when the underlying Validate dataset reloads"
       ],
-      "passes": true,
-      "notes": "Added skillsctl security scan + quarantine commands; tests cover ACIP scan flow and quarantine state transitions."
+      "passes": true
     },
     {
-      "id": 10,
+      "id": 2,
       "priority": 2,
-      "title": "Expand integration tests",
-      "description": "Add end-to-end workflow coverage for create→validate→approve→publish, quarantine, search, and cross-platform sync.",
+      "title": "Stabilize Sync list/detail loading lifecycle",
+      "description": "Make Sync list and detail panes resilient to async loading by ensuring a single source of truth for selection and loading state, with deterministic transitions.",
       "acceptance": [
-        "Integration tests cover create→validate→approve→publish",
-        "Integration tests cover ACIP quarantine flow",
-        "Integration tests cover search indexing and queries",
-        "Integration tests cover cross-platform sync"
+        "Sync list selection persists through background refresh without collapsing the detail view",
+        "Detail view renders a consistent loading/empty/error state without flicker",
+        "Async reloads do not trigger a full list/detail teardown"
       ],
-      "passes": true,
-      "notes": "Added integration coverage for workflow publish flow, ACIP quarantine details, search rebuild/query, and multi-agent sync reports; isolated workflow state storage in tests."
+      "passes": true
     },
     {
-      "id": 11,
+      "id": 3,
       "priority": 3,
-      "title": "Finalize docs",
-      "description": "Update AGENTS/DocC/migration/security notes and README for new CLI commands.",
+      "title": "Surface Search index errors and empty states",
+      "description": "Expose clear UI states for Search indexing failures and empty results so users understand what to do next.",
       "acceptance": [
-        "AGENTS.md updated with new CLI commands",
-        "DocC comments added for new public APIs",
-        "Migration/security notes added",
-        "README updated with CLI examples"
+        "Search shows a dedicated error state when indexing fails, with actionable guidance",
+        "Search shows an explicit empty state when no results exist",
+        "Error and empty states are visually distinct from loading state"
       ],
-      "passes": true,
-      "notes": "Updated AGENTS.md with security/quarantine commands, expanded README + docs usage with CLI examples and migration/security notes, and added DocC comments for public security APIs."
+      "passes": true
+    },
+    {
+      "id": 4,
+      "priority": 4,
+      "title": "Resolve disabled Security/Search actions",
+      "description": "Either implement the currently disabled Security/Search actions or remove them from the UI to avoid dead controls.",
+      "acceptance": [
+        "All visible Security/Search actions are functional",
+        "Disabled controls are removed unless a concrete implementation is shipped",
+        "Any remaining unavailable actions provide a clear reason and next step"
+      ],
+      "passes": true
     }
   ]
 }

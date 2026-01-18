@@ -22,7 +22,7 @@ commands = [
 ]
 
 [runners.codex]
-argv = ["timeout", "900", "codex", "exec", "--full-auto"]
+argv = ["timeout", "900", "codex", "exec", "--full-auto", "--json"]
 
 [runners.claude]
 argv = ["claude", "-p", "--output-format", "text"]

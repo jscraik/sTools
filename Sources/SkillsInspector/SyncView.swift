@@ -364,21 +364,19 @@ private extension SyncView {
         .onAppear {
             if viewModel.selection == nil {
                 // Find first missing skill from any agent
-                for agent in AgentKind.allCases {
-                    if let names = viewModel.report.missingByAgent[agent], let first = names.first {
-                        viewModel.selection = .missing(agent: agent, name: first)
-                        return
-                    }
-                }
-                // Fall back to different content
-                if let first = viewModel.report.differentContent.first {
-                    viewModel.selection = .different(name: first.name)
-                }
+                viewModel.selection = firstSelection(in: viewModel.report)
             }
         }
         .onChange(of: viewModel.report) { _, _ in
             // Collapse sections by default on a new report to reduce scrolling.
             expandedMissing.removeAll()
+            guard let selection = viewModel.selection else {
+                viewModel.selection = firstSelection(in: viewModel.report)
+                return
+            }
+            if !selectionExists(selection, in: viewModel.report) {
+                viewModel.selection = firstSelection(in: viewModel.report)
+            }
         }
     }
 
@@ -489,6 +487,27 @@ private extension SyncView {
         let missingEmpty = viewModel.report.missingByAgent.values.allSatisfy { $0.isEmpty }
         let diffEmpty = viewModel.report.differentContent.isEmpty
         return missingEmpty && diffEmpty
+    }
+
+    private func selectionExists(_ selection: SyncViewModel.SyncSelection, in report: MultiSyncReport) -> Bool {
+        switch selection {
+        case .missing(let agent, let name):
+            return report.missingByAgent[agent]?.contains(name) ?? false
+        case .different(let name):
+            return report.differentContent.contains(where: { $0.name == name })
+        }
+    }
+
+    private func firstSelection(in report: MultiSyncReport) -> SyncViewModel.SyncSelection? {
+        for agent in AgentKind.allCases {
+            if let names = report.missingByAgent[agent], let first = names.first {
+                return .missing(agent: agent, name: first)
+            }
+        }
+        if let first = report.differentContent.first {
+            return .different(name: first.name)
+        }
+        return nil
     }
 }
 

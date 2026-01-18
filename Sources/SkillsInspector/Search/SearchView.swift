@@ -7,6 +7,10 @@ public struct SearchView: View {
     @State private var searchQuery = ""
     @State private var searchResults: [SkillSearchEngine.SearchResult] = []
     @State private var isSearching = false
+    @State private var isIndexLoading = false
+    @State private var indexStats: SkillSearchEngine.Stats?
+    @State private var searchErrorTitle: String?
+    @State private var searchErrorMessage: String?
     @State private var selectedAgent: AgentKind?
     @State private var selectedIndex: Int?
     @State private var searchTask: Task<Void, Never>?
@@ -24,7 +28,7 @@ public struct SearchView: View {
             detailPanel
         }
         .task {
-            try? await initializeSearchEngine()
+            await refreshIndexState()
         }
         .navigationTitle("Search Skills")
         .sheet(isPresented: $showStats) {
@@ -47,12 +51,22 @@ public struct SearchView: View {
             Divider()
 
             // Results
-            if searchQuery.isEmpty {
-                emptyState
-            } else if isSearching {
-                loadingView
+            if hasSearchError {
+                errorState
+            } else if isSearching || isIndexLoading {
+                loadingView(text: isSearching ? "Searching..." : "Loading index...")
+            } else if searchQuery.isEmpty {
+                if isIndexEmpty {
+                    indexEmptyState
+                } else {
+                    emptyState
+                }
             } else if searchResults.isEmpty {
-                noResultsState
+                if isIndexEmpty {
+                    indexEmptyState
+                } else {
+                    noResultsState
+                }
             } else {
                 resultsList
             }
@@ -84,6 +98,8 @@ public struct SearchView: View {
                     searchQuery = ""
                     searchResults = []
                     selectedIndex = nil
+                    searchErrorTitle = nil
+                    searchErrorMessage = nil
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 14))
@@ -177,14 +193,55 @@ public struct SearchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var loadingView: some View {
+    private func loadingView(text: String) -> some View {
         VStack(spacing: DesignTokens.Spacing.md) {
             ProgressView()
                 .scaleEffect(0.8)
 
-            Text("Searching...")
+            Text(text)
                 .font(.system(size: DesignTokens.Typography.Body.size))
                 .foregroundStyle(DesignTokens.Colors.Text.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var errorState: some View {
+        VStack(spacing: DesignTokens.Spacing.md) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(DesignTokens.Colors.Status.error)
+
+            Text(searchErrorTitle ?? "Search Unavailable")
+                .font(.system(size: DesignTokens.Typography.Heading3.size, weight: DesignTokens.Typography.Heading3.weight))
+
+            Text(searchErrorMessage ?? "We couldn't open the search index. Generate a new index and try again.")
+                .font(.system(size: DesignTokens.Typography.Body.size))
+                .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, DesignTokens.Spacing.xl)
+
+            Button("Retry Search") {
+                Task { await refreshIndexState() }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var indexEmptyState: some View {
+        VStack(spacing: DesignTokens.Spacing.md) {
+            Image(systemName: "tray")
+                .font(.system(size: 48))
+                .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+
+            Text("No Indexed Skills")
+                .font(.system(size: DesignTokens.Typography.Heading3.size, weight: DesignTokens.Typography.Heading3.weight))
+
+            Text("Generate a skills index from the Index tab to enable search results.")
+                .font(.system(size: DesignTokens.Typography.Body.size))
+                .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, DesignTokens.Spacing.xl)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -235,8 +292,55 @@ public struct SearchView: View {
 
     // MARK: - Helper Methods
 
-    private func initializeSearchEngine() async throws {
-        searchEngine = try SkillSearchEngine.default()
+    private var hasSearchError: Bool {
+        searchErrorTitle != nil || searchErrorMessage != nil
+    }
+
+    private var isIndexEmpty: Bool {
+        indexStats?.totalSkills == 0
+    }
+
+    private func refreshIndexState() async {
+        await MainActor.run {
+            isIndexLoading = true
+            searchErrorTitle = nil
+            searchErrorMessage = nil
+        }
+
+        do {
+            let engine = try SkillSearchEngine.default()
+            await MainActor.run {
+                searchEngine = engine
+            }
+        } catch {
+            await MainActor.run {
+                searchEngine = nil
+                searchErrorTitle = "Search Index Failed"
+                searchErrorMessage = "We couldn't open the search index. Visit Index to generate a fresh index, then retry."
+                isIndexLoading = false
+            }
+            return
+        }
+
+        await loadIndexStats()
+        await MainActor.run {
+            isIndexLoading = false
+        }
+    }
+
+    private func loadIndexStats() async {
+        guard let engine = searchEngine else { return }
+        do {
+            let stats = try await engine.getStats()
+            await MainActor.run {
+                indexStats = stats
+            }
+        } catch {
+            await MainActor.run {
+                searchErrorTitle = "Index Statistics Unavailable"
+                searchErrorMessage = "We couldn't read the search index status. Try rebuilding the index."
+            }
+        }
     }
 
     private func debouncedSearch(_ query: String) {
@@ -246,23 +350,39 @@ public struct SearchView: View {
         guard !query.isEmpty else {
             searchResults = []
             isSearching = false
+            searchErrorTitle = nil
+            searchErrorMessage = nil
+            selectedIndex = nil
             return
         }
 
         // Debounce by 300ms
         searchTask = Task {
-            isSearching = true
+            await MainActor.run {
+                isSearching = true
+                searchErrorTitle = nil
+                searchErrorMessage = nil
+            }
             try? await Task.sleep(nanoseconds: 300_000_000)
 
             guard !Task.isCancelled else { return }
 
             await performSearch(query)
-            isSearching = false
+            await MainActor.run {
+                isSearching = false
+            }
         }
     }
 
     private func performSearch(_ query: String) async {
-        guard let engine = searchEngine else { return }
+        guard let engine = searchEngine else {
+            await MainActor.run {
+                searchErrorTitle = "Search Index Unavailable"
+                searchErrorMessage = "The search index hasn't been initialized. Generate an index and try again."
+                searchResults = []
+            }
+            return
+        }
 
         var filter = SkillSearchEngine.SearchFilter()
 
@@ -272,10 +392,20 @@ public struct SearchView: View {
 
         do {
             let results = try await engine.search(query: query, filters: filter, limit: resultLimit)
-            searchResults = results
+            await MainActor.run {
+                searchResults = results
+                if results.isEmpty {
+                    selectedIndex = nil
+                }
+            }
+            await loadIndexStats()
         } catch {
             // Handle search error
-            searchResults = []
+            await MainActor.run {
+                searchResults = []
+                searchErrorTitle = "Search Failed"
+                searchErrorMessage = "We couldn't query the search index. Rebuild the index and try again."
+            }
         }
     }
 }

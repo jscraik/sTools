@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SkillsCore
 
 enum RemoteSourceMode: String, CaseIterable {
@@ -12,16 +13,27 @@ struct RemoteView: View {
     @ObservedObject var viewModel: RemoteViewModel
     @ObservedObject var trustStoreVM: TrustStoreViewModel
     @State private var selectedSkill: RemoteSkill?
+    @State private var selectedLocalSlug: String?
     @State private var trustPrompt: TrustPrompt?
     @State private var sourceMode: RemoteSourceMode = .remote
+    @State private var selectionTask: Task<Void, Never>?
+    @State private var localPreviewTask: Task<Void, Never>?
+    @State private var localPreviewMarkdown: String?
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             sidebar
-                .navigationTitle(sourceMode == .remote ? "Remote Library" : "Local Skills")
-        } detail: {
+                .frame(minWidth: 240, idealWidth: 300, maxWidth: 340)
+                .background(DesignTokens.Colors.Background.secondary.opacity(0.1))
+                .layoutPriority(1)
+
+            Divider()
+
             detailPanel
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(0)
         }
+        .frame(maxWidth: .infinity)
         .task {
             if sourceMode == .remote && viewModel.skills.isEmpty && !viewModel.isLoading {
                 await viewModel.loadLatest()
@@ -30,12 +42,32 @@ struct RemoteView: View {
         .onChange(of: sourceMode) { _, _ in
             // Clear selection when switching sources
             selectedSkill = nil
+            selectedLocalSlug = nil
+            localPreviewMarkdown = nil
+            selectionTask?.cancel()
+            localPreviewTask?.cancel()
+            if sourceMode == .local {
+                Task { await viewModel.refreshLocalSkills() }
+            }
         }
         .onChange(of: selectedSkill?.id) { _, _ in
-            if let skill = selectedSkill {
-                Task { await viewModel.fetchPreview(for: skill) }
-                Task { await viewModel.fetchChangelog(for: skill.slug) }
-                Task { await viewModel.fetchOwner(for: skill.slug) }
+            selectionTask?.cancel()
+            selectionTask = Task {
+                guard let skill = selectedSkill else { return }
+                await viewModel.fetchPreview(for: skill)
+                await viewModel.fetchChangelog(for: skill.slug)
+                await viewModel.fetchOwner(for: skill.slug)
+            }
+        }
+        .onChange(of: selectedLocalSlug) { _, _ in
+            localPreviewTask?.cancel()
+            localPreviewTask = Task {
+                guard let slug = selectedLocalSlug else {
+                    await MainActor.run { localPreviewMarkdown = nil }
+                    return
+                }
+                let markdown = viewModel.loadLocalSkillMarkdown(slug: slug)
+                await MainActor.run { localPreviewMarkdown = markdown }
             }
         }
     }
@@ -44,156 +76,163 @@ struct RemoteView: View {
 // MARK: - Subviews
 private extension RemoteView {
     private var sidebar: some View {
-        ZStack {
-            DesignTokens.Colors.Background.secondary.opacity(0.1).ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Header / Toolbar
-                HStack(spacing: DesignTokens.Spacing.xs) {
-                    Label("Marketplace", systemImage: "square.grid.3x3.fill")
-                        .font(.system(size: 14, weight: .black))
-                        .foregroundStyle(DesignTokens.Colors.Text.primary)
+        VStack(spacing: 0) {
+            // Header / Toolbar
+            HStack(spacing: DesignTokens.Spacing.xs) {
+                Label("Marketplace", systemImage: "square.grid.3x3.fill")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(DesignTokens.Colors.Text.primary)
 
-                    Spacer()
+                Spacer()
 
-                    // Source toggle: Local / Remote
-                    Picker("", selection: $sourceMode) {
-                        ForEach(RemoteSourceMode.allCases, id: \.self) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
+                // Source toggle: Local / Remote
+                Picker("", selection: $sourceMode) {
+                    ForEach(RemoteSourceMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 140)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 140)
 
-                    if sourceMode == .remote {
-                        if viewModel.isLoading {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                        } else {
-                            Button {
-                                Task { await viewModel.loadLatest() }
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 11, weight: .bold))
-                            }
-                            .buttonStyle(.clean)
-                            .help("Refresh library")
-                        }
-                    }
-
-                    if viewModel.isBulkActionsEnabled() {
-                        Menu {
-                            Button("Verify All") {
-                                Task { await viewModel.verifyAll() }
-                            }
-                            Button("Update All Verified") {
-                                Task { await viewModel.updateAllVerified() }
-                            }
-                            Divider()
-                            Button("Export Changelog") {
-                                Task { await viewModel.exportChangelog() }
-                            }
+                if sourceMode == .remote {
+                    if viewModel.isLoading {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                    } else {
+                        Button {
+                            Task { await viewModel.loadLatest() }
                         } label: {
-                            Image(systemName: "ellipsis.circle")
+                            Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 11, weight: .bold))
                         }
                         .buttonStyle(.clean)
+                        .help("Refresh library")
                     }
                 }
-                .padding(.horizontal, DesignTokens.Spacing.sm)
-                .padding(.vertical, DesignTokens.Spacing.xs)
-                .background(DesignTokens.Colors.Background.primary.opacity(0.5))
 
-                Divider()
-
-                if let progress = viewModel.bulkOperationProgress {
-                    bulkOperationProgressView(progress)
-                }
-
-                if let error = viewModel.errorMessage {
-                    HStack {
-                        Image(systemName: "exclamationmark.octagon.fill")
-                        Text(error)
-                            .lineLimit(2)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(DesignTokens.Colors.Status.error)
-                    .padding(DesignTokens.Spacing.xs)
-                    .background(DesignTokens.Colors.Status.error.opacity(0.1))
-                }
-
-                if let exportedURL = viewModel.exportedChangelogURL {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("Exported: \(exportedURL.lastPathComponent)")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(DesignTokens.Colors.Status.success)
-                    .padding(DesignTokens.Spacing.xs)
-                    .background(DesignTokens.Colors.Status.success.opacity(0.1))
-                }
-
-                if viewModel.isLoading && viewModel.skills.isEmpty {
-                    VStack(spacing: 8) {
-                        ForEach(0..<8, id: \.self) { _ in
-                            SkeletonSkillRow()
+                if viewModel.isBulkActionsEnabled() {
+                    Menu {
+                        Button("Verify All") {
+                            Task { await viewModel.verifyAll() }
                         }
+                        Button("Update All Verified") {
+                            Task { await viewModel.updateAllVerified() }
+                        }
+                        Divider()
+                        Button("Export Changelog") {
+                            Task { await viewModel.exportChangelog() }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 11, weight: .bold))
                     }
-                    .padding(DesignTokens.Spacing.sm)
-                } else if sourceMode == .remote && viewModel.skills.isEmpty {
-                    VStack(spacing: DesignTokens.Spacing.sm) {
-                        Spacer()
-                        Image(systemName: "cloud.rain.fill")
-                            .font(.system(size: 32))
-                            .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
-                        Text("No remote skills found")
-                            .font(.headline)
-                        Text("Check your connection or enable Mock Remote in settings.")
-                            .font(.caption)
-                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        Spacer()
+                    .buttonStyle(.clean)
+                }
+            }
+            .padding(.horizontal, DesignTokens.Spacing.sm)
+            .padding(.vertical, DesignTokens.Spacing.xs)
+            .background(DesignTokens.Colors.Background.primary.opacity(0.5))
+
+            Divider()
+
+            if let progress = viewModel.bulkOperationProgress {
+                bulkOperationProgressView(progress)
+            }
+
+            if let error = viewModel.errorMessage {
+                HStack {
+                    Image(systemName: "exclamationmark.octagon.fill")
+                    Text(error)
+                        .lineLimit(2)
+                }
+                .font(.caption)
+                .foregroundStyle(DesignTokens.Colors.Status.error)
+                .padding(DesignTokens.Spacing.xs)
+                .background(DesignTokens.Colors.Status.error.opacity(0.1))
+            }
+
+            if let exportedURL = viewModel.exportedChangelogURL {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("Exported: \(exportedURL.lastPathComponent)")
+                }
+                .font(.caption)
+                .foregroundStyle(DesignTokens.Colors.Status.success)
+                .padding(DesignTokens.Spacing.xs)
+                .background(DesignTokens.Colors.Status.success.opacity(0.1))
+            }
+
+            if viewModel.isLoading && viewModel.skills.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(0..<8, id: \.self) { _ in
+                        SkeletonSkillRow()
                     }
-                } else if sourceMode == .local && viewModel.installedVersions.isEmpty {
-                    VStack(spacing: DesignTokens.Spacing.sm) {
-                        Spacer()
-                        Image(systemName: "folder.open.badge.questionmark")
-                            .font(.system(size: 32))
-                            .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
-                        Text("No local skills found")
-                            .font(.headline)
-                        Text("Install skills from the remote marketplace.")
-                            .font(.caption)
-                            .foregroundStyle(DesignTokens.Colors.Text.tertiary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                        Spacer()
-                    }
-                } else {
-                    List(selection: $selectedSkill) {
-                        if sourceMode == .remote {
+                }
+                .padding(DesignTokens.Spacing.sm)
+            } else if sourceMode == .remote && viewModel.skills.isEmpty {
+                VStack(spacing: DesignTokens.Spacing.sm) {
+                    Spacer()
+                    Image(systemName: "cloud.rain.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+                    Text("No remote skills found")
+                        .font(.headline)
+                    Text("Check your connection or enable Mock Remote in settings.")
+                        .font(.caption)
+                        .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    Spacer()
+                }
+            } else if sourceMode == .local && viewModel.installedVersions.isEmpty {
+                VStack(spacing: DesignTokens.Spacing.sm) {
+                    Spacer()
+                    Image(systemName: "folder.open.badge.questionmark")
+                        .font(.system(size: 32))
+                        .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+                    Text("No local skills found")
+                        .font(.headline)
+                    Text("Install skills from the remote marketplace.")
+                        .font(.caption)
+                        .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                    Spacer()
+                }
+            } else {
+                Group {
+                    if sourceMode == .remote {
+                        List {
                             ForEach(viewModel.skills, id: \.id) { skill in
-                                skillRow(skill)
-                                    .tag(skill)
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
+                                Button {
+                                    selectedSkill = skill
+                                } label: {
+                                    skillRow(skill)
+                                }
+                                .buttonStyle(.plain)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                             }
-                        } else {
-                            // Show local installed skills
+                        }
+                    } else {
+                        List {
                             ForEach(Array(viewModel.installedVersions.keys.sorted()), id: \.self) { slug in
-                                localSkillRow(slug: slug, version: viewModel.installedVersions[slug] ?? "unknown")
-                                    .tag(slug)
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
+                                Button {
+                                    selectedLocalSlug = slug
+                                } label: {
+                                    localSkillRow(slug: slug, version: viewModel.installedVersions[slug] ?? "unknown")
+                                }
+                                .buttonStyle(.plain)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                             }
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
     }
@@ -355,7 +394,9 @@ private extension RemoteView {
 
     @ViewBuilder
     private var detailPanel: some View {
-        if let skill = selectedSkill {
+        if sourceMode == .local {
+            localDetailPanel
+        } else if let skill = selectedSkill {
             let previewState = viewModel.previewStateBySlug[skill.slug] ?? RemotePreviewState(status: .idle, preview: nil, manifest: nil, error: nil)
             
             ScrollView {
@@ -553,6 +594,93 @@ private extension RemoteView {
                     .foregroundStyle(DesignTokens.Colors.Text.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 300)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(DesignTokens.Colors.Background.primary)
+        }
+    }
+
+    @ViewBuilder
+    private var localDetailPanel: some View {
+        if let slug = selectedLocalSlug {
+            let version = viewModel.installedVersions[slug] ?? "unknown"
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.sm) {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(slug)
+                                    .font(.title2.weight(.black))
+                                Text("Local skill")
+                                    .font(.subheadline)
+                                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            }
+
+                            Spacer()
+
+                            Text("v\(version)")
+                                .font(.system(.title3, design: .monospaced))
+                                .fontWeight(.bold)
+                        }
+
+                        Divider()
+
+                        HStack(spacing: DesignTokens.Spacing.xs) {
+                            Button {
+                                if let url = viewModel.localSkillURL(slug: slug) {
+                                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                                }
+                            } label: {
+                                Label("Show in Finder", systemImage: "folder")
+                            }
+                            .buttonStyle(.clean)
+                        }
+                    }
+                    .padding(DesignTokens.Spacing.sm)
+                    .background(DesignTokens.Colors.Background.secondary.opacity(0.4))
+                    .cornerRadius(DesignTokens.Radius.md)
+
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
+                        Text("Markdown Preview")
+                            .heading3()
+
+                        if let markdown = localPreviewMarkdown {
+                            MarkdownPreviewView(content: markdown)
+                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: 240)
+                                .background(DesignTokens.Colors.Background.primary)
+                                .cornerRadius(DesignTokens.Radius.sm)
+                        } else {
+                            VStack(spacing: 12) {
+                                ProgressView()
+                                Text("Loading local skill...")
+                                    .font(.caption)
+                                    .foregroundStyle(DesignTokens.Colors.Text.tertiary)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 200)
+                            .background(DesignTokens.Colors.Background.tertiary.opacity(0.2))
+                            .cornerRadius(DesignTokens.Radius.sm)
+                        }
+                    }
+                    .padding(DesignTokens.Spacing.sm)
+                    .background(DesignTokens.Colors.Background.secondary.opacity(0.3))
+                    .cornerRadius(DesignTokens.Radius.md)
+                }
+                .padding(DesignTokens.Spacing.sm)
+            }
+            .background(DesignTokens.Colors.Background.primary)
+        } else {
+            VStack(spacing: DesignTokens.Spacing.sm) {
+                Image(systemName: "folder")
+                    .font(.system(size: 64))
+                    .foregroundStyle(DesignTokens.Colors.Icon.tertiary)
+                Text("Select a local skill")
+                    .font(.title2.weight(.bold))
+                Text("Choose a skill from the list to review its local content.")
+                    .font(.subheadline)
+                    .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(DesignTokens.Colors.Background.primary)

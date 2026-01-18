@@ -31,7 +31,9 @@ struct FindingDetailView: View {
             }
             .padding(DesignTokens.Spacing.sm)
         }
-        .onAppear { loadMarkdownContent() }
+        .task(id: finding.fileURL) {
+            await loadMarkdownContent()
+        }
         .toast($toastMessage)
     }
 
@@ -329,17 +331,21 @@ struct FindingDetailView: View {
         }
     }
     
-    private func loadMarkdownContent() {
-        Task {
-            do {
-                let content = try String(contentsOf: finding.fileURL, encoding: .utf8)
-                await MainActor.run {
-                    markdownContent = content
-                }
-            } catch {
-                await MainActor.run {
-                    markdownContent = "*Error loading source file.*"
-                }
+    private func loadMarkdownContent() async {
+        guard finding.fileURL.pathExtension.lowercased() == "md" else {
+            await MainActor.run {
+                markdownContent = nil
+            }
+            return
+        }
+        do {
+            let content = try String(contentsOf: finding.fileURL, encoding: .utf8)
+            await MainActor.run {
+                markdownContent = content
+            }
+        } catch {
+            await MainActor.run {
+                markdownContent = "*Error loading source file.*"
             }
         }
     }

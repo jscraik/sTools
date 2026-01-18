@@ -1356,3 +1356,20 @@ All 10 acceptance criteria verified as implemented and functional.
 - [20260117T013201Z] iter 11 mode=prd status=DONE checks=PASS story=S10 agent=codex branch=ralph log=20260117T013201Z-iter0011-codex.log
 
 - [2026-01-17T01:37:51Z] iter 12 mode=prd status=UPDATE checks=PASS story=S11 — Updated AGENTS/README/docs usage with security scan + quarantine CLI examples and migration/security notes; added DocC comments for RemoteArtifactSecurity public APIs.
+- [20260117T020814Z] iter 12 mode=prd status=CONTINUE checks=PASS story=- agent=codex branch=ralph log=20260117T020814Z-iter0012-codex.log
+
+- [2026-01-17T02:33:33Z] note=specs status=INFO — Marked .spec/spec-<->.md as superseded by current PRD + tech spec to avoid confusion.
+
+- [2026-01-17T03:36:30Z] iter 13 mode=prd status=UPDATE checks=PASS story=S1 — Updated Validate detail selection to use ID-based reconciliation so filtered/updated datasets immediately select a valid finding and avoid stale detail. Checks: swift build -c debug --product sTools; swift test (1 snapshot skipped: ALLOW_CHARTS_SNAPSHOT=1); swift package skills-lint; swift run skillsctl scan --repo . --allow-empty.
+- [20260117T034041Z] iter 13 mode=prd status=DONE checks=PASS story=S1 agent=codex branch=ralph log=20260117T034041Z-iter0013-codex.log
+
+- [2026-01-17T03:50:07Z] iter 14 mode=prd status=UPDATE checks=PASS story=S2 — Sync selection now reconciles after report refresh; SyncDetailView load state gated with load IDs to prevent flicker/stale updates.
+
+- [2026-01-17T03:53:09Z] iter 14 mode=prd status=BLOCKED checks=PASS story=S2 — Git commit failed: sandbox blocks creating .git/index.lock; unable to write commit object.
+- [20260117T035357Z] iter 14 mode=prd status=DONE checks=PASS story=S2 agent=codex branch=ralph log=20260117T035357Z-iter0014-codex.log
+- [2026-01-17T04:01:19Z] iter 15 mode=prd status=UPDATE checks=PASS story=S3 — Added Search error and empty index states with retry + guidance; search now refreshes index stats and shows distinct loading/error/empty UI. Checks: swift build -c debug --product sTools; swift test (1 snapshot skipped: ALLOW_CHARTS_SNAPSHOT=1); swift package skills-lint; swift run skillsctl scan --repo . --allow-empty.
+- [2026-01-17T04:03:00Z] iter 15 mode=prd status=BLOCKED checks=PASS story=S3 — Commit failed: sandbox denies creating .git/index.lock (and 1Password signing buffer error on prior attempt). Changes staged but not committed.
+- [20260117T040357Z] iter 15 mode=prd status=DONE checks=PASS story=S3 agent=codex branch=ralph log=20260117T040357Z-iter0015-codex.log
+- [2026-01-17T04:12:30Z] iter 16 mode=prd status=UPDATE checks=PASS story=S4 — Enabled Security allowlist/blocklist actions (add/remove patterns with sheets), wired preset changes to config, removed non-functional Search context menu item. Checks: swift build -c debug --product sTools; swift test (1 snapshot skipped: ALLOW_CHARTS_SNAPSHOT=1); swift package skills-lint; swift run skillsctl scan --repo . --allow-empty.
+- [2026-01-17T04:14:05Z] iter 16 mode=prd status=BLOCKED checks=PASS story=S4 — Commit failed: 1Password signing buffer error, then sandbox denied creating .git/index.lock.
+- [20260117T041419Z] iter 16 mode=prd status=DONE checks=PASS story=S4 agent=codex branch=ralph log=20260117T041419Z-iter0016-codex.log

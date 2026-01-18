@@ -27,6 +27,7 @@ final class RemoteViewModel: ObservableObject {
     private let telemetry: TelemetryClient
     private let features: FeatureFlags
     private let keysetUpdater: (RemoteKeyset) -> Void
+    private let securitySettingsStore: SecuritySettingsStore
     private let changelogGenerator = SkillChangelogGenerator()
 
     init(
@@ -37,7 +38,8 @@ final class RemoteViewModel: ObservableObject {
         features: FeatureFlags = .fromEnvironment(),
         targetResolver: @escaping () -> SkillInstallTarget = { .codex(PathUtil.urlFromPath("~/.codex/skills")) },
         trustStoreProvider: @escaping () -> RemoteTrustStore = { .ephemeral },
-        keysetUpdater: @escaping (RemoteKeyset) -> Void = { _ in }
+        keysetUpdater: @escaping (RemoteKeyset) -> Void = { _ in },
+        securitySettingsStore: SecuritySettingsStore = SecuritySettingsStore()
     ) {
         let env = ProcessInfo.processInfo.environment
         if env["SKILLS_MOCK_REMOTE_SCREENSHOT"] == "1" {
@@ -55,6 +57,7 @@ final class RemoteViewModel: ObservableObject {
         self.telemetry = telemetry
         self.features = features
         self.keysetUpdater = keysetUpdater
+        self.securitySettingsStore = securitySettingsStore
     }
 
     func loadLatest(limit: Int = 20) async {
@@ -69,6 +72,10 @@ final class RemoteViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    func refreshLocalSkills() async {
+        await refreshInstalledVersions()
     }
 
     func fetchOwner(for slug: String) async {
@@ -169,6 +176,7 @@ final class RemoteViewModel: ObservableObject {
             .copilot(PathUtil.urlFromPath("~/.copilot/skills"))
         ]
         do {
+            let securityConfig = await securitySettingsStore.load()
             let archive = try await client.download(skill.slug, skill.latestVersion)
             let outcome = try await multiInstaller.install(
                 archiveURL: archive,
@@ -177,7 +185,8 @@ final class RemoteViewModel: ObservableObject {
                 manifest: manifest,
                 policy: .default,
                 trustStore: trustStoreProvider(),
-                skillSlug: skill.slug
+                skillSlug: skill.slug,
+                securityConfig: securityConfig
             )
             multiTargetOutcome = outcome  // Store outcome for UI display
 
@@ -242,6 +251,7 @@ final class RemoteViewModel: ObservableObject {
                 errorMessage = "Manifest unavailable for \(slug). Verification required."
                 return
             }
+            let securityConfig = await securitySettingsStore.load()
             let result = try await installer.install(
                 archiveURL: archive,
                 target: targetResolver(),
@@ -249,7 +259,8 @@ final class RemoteViewModel: ObservableObject {
                 manifest: manifest,
                 policy: .default,
                 trustStore: trustStoreProvider(),
-                skillSlug: slug
+                skillSlug: slug,
+                securityConfig: securityConfig
             )
             installResult = result
             let skill = skills.first { $0.slug == slug }
@@ -277,6 +288,19 @@ final class RemoteViewModel: ObservableObject {
         guard let latest = skill.latestVersion else { return false }
         guard let installed = installedVersions[skill.slug] else { return false }
         return installed != latest
+    }
+
+    func localSkillURL(slug: String) -> URL? {
+        let root = targetResolver().root
+        let skillDir = root.appendingPathComponent(slug, isDirectory: true)
+        let skillFile = skillDir.appendingPathComponent("SKILL.md")
+        guard FileManager.default.fileExists(atPath: skillFile.path) else { return nil }
+        return skillFile
+    }
+
+    func loadLocalSkillMarkdown(slug: String) -> String? {
+        guard let skillFile = localSkillURL(slug: slug) else { return nil }
+        return try? String(contentsOf: skillFile, encoding: .utf8)
     }
 
     private func refreshInstalledVersions() async {

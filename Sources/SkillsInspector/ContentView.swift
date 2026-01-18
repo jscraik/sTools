@@ -14,6 +14,9 @@ struct LegacyContentView: View {
     @State private var searchText: String = ""
     @State private var showingRootError = false
     @State private var rootErrorMessage = ""
+    @State private var sidebarWidth: CGFloat = 280
+    @State private var sidebarDragStart: CGFloat?
+    @State private var isSidebarResizerHover = false
 
     init() {
         let trustStoreVM = TrustStoreViewModel()
@@ -42,55 +45,27 @@ struct LegacyContentView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             sidebar
-        } detail: {
-            switch mode {
-            case .validate:
-                ValidateView(
-                    viewModel: viewModel,
-                    severityFilter: $severityFilter,
-                    agentFilter: $agentFilter,
-                    searchText: $searchText
-                )
-            case .stats:
-                StatsView(
-                    viewModel: viewModel,
-                    mode: $mode,
-                    severityFilter: $severityFilter,
-                    agentFilter: $agentFilter
-                )
-            case .sync:
-                SyncView(
-                    viewModel: syncVM,
-                    codexRoots: $viewModel.codexRoots,
-                    claudeRoot: $viewModel.claudeRoot,
-                    copilotRoot: $viewModel.copilotRoot,
-                    codexSkillManagerRoot: $viewModel.codexSkillManagerRoot,
-                    recursive: $viewModel.recursive,
-                    maxDepth: $viewModel.maxDepth,
-                    excludeInput: $viewModel.excludeInput,
-                    excludeGlobInput: $viewModel.excludeGlobInput
-                )
-            case .index:
-                IndexView(
-                    viewModel: indexVM,
-                    codexRoots: viewModel.codexRoots,
-                    claudeRoot: viewModel.claudeRoot,
-                    codexSkillManagerRoot: viewModel.codexSkillManagerRoot,
-                    copilotRoot: viewModel.copilotRoot,
-                    recursive: $viewModel.recursive,
-                    excludes: viewModel.effectiveExcludes,
-                    excludeGlobs: viewModel.effectiveGlobExcludes
-                )
-            case .remote:
-                RemoteView(viewModel: remoteVM, trustStoreVM: trustStoreVM)
-            case .changelog:
-                ChangelogView(viewModel: changelogVM)
+                .frame(width: sidebarWidth)
+                .background(DesignTokens.Colors.Background.secondary)
+                .layoutPriority(1)
+
+            sidebarResizer
+
+            activeDetailView
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .layoutPriority(0)
+        }
+        .frame(minWidth: 1200, minHeight: 800)
+        .background(DesignTokens.Colors.Background.primary)
+        #if os(macOS)
+        .background {
+            WindowAccessor { window in
+                configureWindow(window)
             }
         }
-        .frame(minWidth: 1000, minHeight: 700)
-        .background(DesignTokens.Colors.Background.primary)
+        #endif
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
@@ -100,7 +75,7 @@ struct LegacyContentView: View {
                 HStack(spacing: DesignTokens.Spacing.xxs) {
                     Image(systemName: "sparkles")
                         .foregroundStyle(DesignTokens.Colors.Accent.blue)
-                    Text("sTools")
+                    Text("SkillsInspector")
                         .heading3()
                 }
                 .padding(.horizontal, DesignTokens.Spacing.xs)
@@ -132,6 +107,70 @@ struct LegacyContentView: View {
 
 // MARK: - Subviews
 private extension LegacyContentView {
+    private var sidebarMinWidth: CGFloat { 240 }
+    private var sidebarMaxWidth: CGFloat { 360 }
+
+    @ViewBuilder
+    private var activeDetailView: some View {
+        switch mode {
+        case .validate:
+            ValidateView(
+                viewModel: viewModel,
+                severityFilter: $severityFilter,
+                agentFilter: $agentFilter,
+                searchText: $searchText
+            )
+            .onAppear {
+                // Cancel any stray scan that might have started during init
+                viewModel.cancelScan()
+
+                // Wait for UI to fully render before marking app ready
+                Task {
+                    // Yield to let UI finish rendering
+                    await Task.yield()
+                    // Short delay to ensure UI is interactive
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    await MainActor.run {
+                        viewModel.markAppReady()
+                    }
+                }
+            }
+        case .stats:
+            StatsView(
+                viewModel: viewModel,
+                mode: $mode,
+                severityFilter: $severityFilter,
+                agentFilter: $agentFilter
+            )
+        case .sync:
+            SyncView(
+                viewModel: syncVM,
+                codexRoots: $viewModel.codexRoots,
+                claudeRoot: $viewModel.claudeRoot,
+                copilotRoot: $viewModel.copilotRoot,
+                codexSkillManagerRoot: $viewModel.codexSkillManagerRoot,
+                recursive: $viewModel.recursive,
+                maxDepth: $viewModel.maxDepth,
+                excludeInput: $viewModel.excludeInput,
+                excludeGlobInput: $viewModel.excludeGlobInput
+            )
+        case .index:
+            IndexView(
+                viewModel: indexVM,
+                codexRoots: viewModel.codexRoots,
+                claudeRoot: viewModel.claudeRoot,
+                codexSkillManagerRoot: viewModel.codexSkillManagerRoot,
+                copilotRoot: viewModel.copilotRoot,
+                recursive: $viewModel.recursive,
+                excludes: viewModel.effectiveExcludes,
+                excludeGlobs: viewModel.effectiveGlobExcludes
+            )
+        case .remote:
+            RemoteView(viewModel: remoteVM, trustStoreVM: trustStoreVM)
+        case .changelog:
+            ChangelogView(viewModel: changelogVM)
+        }
+    }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -141,7 +180,7 @@ private extension LegacyContentView {
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(LinearGradient(colors: [DesignTokens.Colors.Accent.blue, DesignTokens.Colors.Accent.purple], startPoint: .topLeading, endPoint: .bottomTrailing))
                 
-                Text("sTools")
+                Text("SkillsInspector")
                     .font(.system(size: 18, weight: .black))
                     .tracking(-0.5)
             }
@@ -315,7 +354,37 @@ private extension LegacyContentView {
             }
         }
         .background(DesignTokens.Colors.Background.secondary.ignoresSafeArea())
-        .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+    }
+
+    private var sidebarResizer: some View {
+        let baseColor = DesignTokens.Colors.Border.light
+        let strokeColor = isSidebarResizerHover ? baseColor.opacity(0.9) : baseColor.opacity(0.6)
+        Rectangle()
+            .fill(strokeColor)
+            .frame(width: 1)
+            .overlay(
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 6)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 2)
+                            .onChanged { value in
+                                if sidebarDragStart == nil {
+                                    sidebarDragStart = sidebarWidth
+                                }
+                                let start = sidebarDragStart ?? sidebarWidth
+                                let proposed = start + value.translation.width
+                                sidebarWidth = min(max(proposed, sidebarMinWidth), sidebarMaxWidth)
+                            }
+                            .onEnded { _ in
+                                sidebarDragStart = nil
+                            }
+                    )
+            )
+            .onHover { hovering in
+                isSidebarResizerHover = hovering
+            }
     }
 
     // MARK: - Private Sidebar Components
@@ -602,9 +671,27 @@ private extension LegacyContentView {
     private var cleanSidebarBackground: some View {
         DesignTokens.Colors.Background.secondary
     }
+    
+    #if os(macOS)
+    /// Configures the NSWindow to enforce minimum size constraints and bump undersized windows.
+    /// This ensures the window never opens below 1200×800, even if macOS restores a smaller saved frame.
+    private func configureWindow(_ window: NSWindow) {
+        // Set minimum size to prevent users from resizing window too small
+        window.minSize = NSSize(width: 1200, height: 800)
+        
+        // If current content size is below minimum, bump it up
+        let currentSize = window.contentRect(forFrameRect: window.frame).size
+        if currentSize.width < 1200 || currentSize.height < 800 {
+            let targetSize = NSSize(
+                width: max(currentSize.width, 1200),
+                height: max(currentSize.height, 800)
+            )
+            // setContentSize adjusts the window frame to accommodate the new content size
+            window.setContentSize(targetSize)
+        }
+    }
+    #endif
 }
-
-
 
 // Alias for backward compatibility
 typealias ContentView = LegacyContentView
