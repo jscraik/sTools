@@ -28,6 +28,7 @@ Icon?
 *.tmp
 *.swp
 *~
+*.bak
 
 # Local development
 .vscode/
@@ -51,3 +52,6 @@ Icon?
 .ralph/logs/
 .ralph/state.json
 .ralph/prompt-*.txt
+
+# Local spec outputs
+.spec/
