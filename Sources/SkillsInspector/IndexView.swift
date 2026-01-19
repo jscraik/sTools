@@ -173,19 +173,20 @@ struct IndexView: View {
             content
         }
         .frame(minWidth: 600)
-        .task(id: viewModel.include) { await autoGenerateIfReady() }
-        .task(id: viewModel.bump) { await autoGenerateIfReady() }
-        .task(id: recursive) { await autoGenerateIfReady() }
-        .task(id: viewModel.existingVersion) {
-            // Debounce version typing to avoid flicker
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            await autoGenerateIfReady()
-        }
-        .task(id: viewModel.changelogNote) {
-            // Debounce changelog typing
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            await autoGenerateIfReady()
-        }
+        // DISABLED: Causing continuous flickering - generation updates properties which trigger more generation
+        // .task(id: viewModel.include) { await autoGenerateIfReady() }
+        // .task(id: viewModel.bump) { await autoGenerateIfReady() }
+        // .task(id: recursive) { await autoGenerateIfReady() }
+        // .task(id: viewModel.existingVersion) {
+        //     // Debounce version typing to avoid flicker
+        //     try? await Task.sleep(nanoseconds: 800_000_000)
+        //     await autoGenerateIfReady()
+        // }
+        // .task(id: viewModel.changelogNote) {
+        //     // Debounce changelog typing
+        //     try? await Task.sleep(nanoseconds: 1_200_000_000)
+        //     await autoGenerateIfReady()
+        // }
         .onReceive(NotificationCenter.default.publisher(for: .runScan)) { _ in
             Task { await viewModel.generate(codexRoots: codexRoots, claudeRoot: claudeRoot, codexSkillManagerRoot: codexSkillManagerRoot, copilotRoot: copilotRoot, recursive: recursive, excludes: excludes, excludeGlobs: excludeGlobs) }
         }

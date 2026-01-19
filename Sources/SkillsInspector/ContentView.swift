@@ -2,12 +2,18 @@ import SwiftUI
 import SkillsCore
 
 struct LegacyContentView: View {
+    // AppDependencies with lazy initialization
+    @StateObject private var dependencies: AppDependencies = AppDependencies()
+
+    // Lightweight ViewModels that can initialize synchronously
     @StateObject private var viewModel = InspectorViewModel()
     @StateObject private var syncVM = SyncViewModel()
     @StateObject private var indexVM = IndexViewModel()
-    @StateObject private var changelogVM: ChangelogViewModel
-    @StateObject private var trustStoreVM = TrustStoreViewModel()
-    @StateObject private var remoteVM: RemoteViewModel
+
+    // ViewModels created once when their views are first accessed
+    @StateObject private var remoteVMFactory = RemoteViewModelFactory()
+    @StateObject private var changelogVMFactory = ChangelogViewModelFactory()
+
     @State private var mode: AppMode = .validate
     @State private var severityFilter: Severity? = nil
     @State private var agentFilter: AgentKind? = nil
@@ -15,76 +21,12 @@ struct LegacyContentView: View {
     @State private var showingRootError = false
     @State private var rootErrorMessage = ""
 
-    init() {
-        let trustStoreVM = TrustStoreViewModel()
-        let ledger = try? SkillLedger()
-        let features = FeatureFlags.fromEnvironment()
-        let telemetryURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("SkillsInspector", isDirectory: true)
-            .appendingPathComponent("telemetry.jsonl")
-        let telemetry = features.telemetryOptIn
-            ? TelemetryClient.file(url: telemetryURL ?? FileManager.default.temporaryDirectory.appendingPathComponent("telemetry.jsonl"))
-            : .noop
-        _trustStoreVM = StateObject(wrappedValue: trustStoreVM)
-        _changelogVM = StateObject(wrappedValue: ChangelogViewModel(ledger: ledger))
-        _remoteVM = StateObject(
-            wrappedValue: RemoteViewModel(
-                client: RemoteSkillClient.live(),
-                ledger: ledger,
-                telemetry: telemetry,
-                features: features,
-                trustStoreProvider: { trustStoreVM.trustStore }
-            )
-        )
-    }
-
     var body: some View {
         NavigationSplitView {
             sidebar
         } detail: {
-            switch mode {
-            case .validate:
-                ValidateView(
-                    viewModel: viewModel,
-                    severityFilter: $severityFilter,
-                    agentFilter: $agentFilter,
-                    searchText: $searchText
-                )
-            case .stats:
-                StatsView(
-                    viewModel: viewModel,
-                    mode: $mode,
-                    severityFilter: $severityFilter,
-                    agentFilter: $agentFilter
-                )
-            case .sync:
-                SyncView(
-                    viewModel: syncVM,
-                    codexRoots: $viewModel.codexRoots,
-                    claudeRoot: $viewModel.claudeRoot,
-                    copilotRoot: $viewModel.copilotRoot,
-                    codexSkillManagerRoot: $viewModel.codexSkillManagerRoot,
-                    recursive: $viewModel.recursive,
-                    maxDepth: $viewModel.maxDepth,
-                    excludeInput: $viewModel.excludeInput,
-                    excludeGlobInput: $viewModel.excludeGlobInput
-                )
-            case .index:
-                IndexView(
-                    viewModel: indexVM,
-                    codexRoots: viewModel.codexRoots,
-                    claudeRoot: viewModel.claudeRoot,
-                    codexSkillManagerRoot: viewModel.codexSkillManagerRoot,
-                    copilotRoot: viewModel.copilotRoot,
-                    recursive: $viewModel.recursive,
-                    excludes: viewModel.effectiveExcludes,
-                    excludeGlobs: viewModel.effectiveGlobExcludes
-                )
-            case .remote:
-                RemoteView(viewModel: remoteVM, trustStoreVM: trustStoreVM)
-            case .changelog:
-                ChangelogView(viewModel: changelogVM)
-            }
+            // Use @ViewBuilder with explicit IDs to prevent view recreation on tab switch
+            detailContent
         }
         .frame(minWidth: 1000, minHeight: 700)
         .background(appGlassBackground)
@@ -124,6 +66,63 @@ struct LegacyContentView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(rootErrorMessage)
+        }
+    }
+
+    // MARK: - Detail Content
+    @ViewBuilder
+    private var detailContent: some View {
+        switch mode {
+        case .validate:
+            ValidateView(
+                viewModel: viewModel,
+                severityFilter: $severityFilter,
+                agentFilter: $agentFilter,
+                searchText: $searchText
+            )
+            .id("validate-view")
+        case .stats:
+            StatsView(
+                viewModel: viewModel,
+                mode: $mode,
+                severityFilter: $severityFilter,
+                agentFilter: $agentFilter
+            )
+            .id("stats-view")
+        case .sync:
+            SyncView(
+                viewModel: syncVM,
+                codexRoots: $viewModel.codexRoots,
+                claudeRoot: $viewModel.claudeRoot,
+                copilotRoot: $viewModel.copilotRoot,
+                codexSkillManagerRoot: $viewModel.codexSkillManagerRoot,
+                recursive: $viewModel.recursive,
+                maxDepth: $viewModel.maxDepth,
+                excludeInput: $viewModel.excludeInput,
+                excludeGlobInput: $viewModel.excludeGlobInput
+            )
+            .id("sync-view")
+        case .index:
+            IndexView(
+                viewModel: indexVM,
+                codexRoots: viewModel.codexRoots,
+                claudeRoot: viewModel.claudeRoot,
+                codexSkillManagerRoot: viewModel.codexSkillManagerRoot,
+                copilotRoot: viewModel.copilotRoot,
+                recursive: $viewModel.recursive,
+                excludes: viewModel.effectiveExcludes,
+                excludeGlobs: viewModel.effectiveGlobExcludes
+            )
+            .id("index-view")
+        case .remote:
+            RemoteView(
+                viewModel: remoteVMFactory.makeViewModel(dependencies: dependencies),
+                trustStoreVM: dependencies.trustStoreVM
+            )
+            .id("remote-view")
+        case .changelog:
+            ChangelogView(viewModel: changelogVMFactory.makeViewModel(dependencies: dependencies))
+            .id("changelog-view")
         }
     }
 
@@ -591,6 +590,43 @@ private extension LegacyContentView {
     }
 }
 
+// MARK: - ViewModel Factories
+
+/// Factory that creates and caches RemoteViewModel
+@MainActor
+class RemoteViewModelFactory: ObservableObject {
+    private var _viewModel: RemoteViewModel?
+
+    func makeViewModel(dependencies: AppDependencies) -> RemoteViewModel {
+        if let vm = _viewModel {
+            return vm
+        }
+        let vm = RemoteViewModel(
+            client: RemoteSkillClient.live(),
+            ledger: dependencies.ledger,
+            telemetry: dependencies.telemetry,
+            features: dependencies.features,
+            trustStoreProvider: { dependencies.trustStoreVM.trustStore }
+        )
+        _viewModel = vm
+        return vm
+    }
+}
+
+/// Factory that creates and caches ChangelogViewModel
+@MainActor
+class ChangelogViewModelFactory: ObservableObject {
+    private var _viewModel: ChangelogViewModel?
+
+    func makeViewModel(dependencies: AppDependencies) -> ChangelogViewModel {
+        if let vm = _viewModel {
+            return vm
+        }
+        let vm = ChangelogViewModel(ledger: dependencies.ledger)
+        _viewModel = vm
+        return vm
+    }
+}
 
 
 // Alias for backward compatibility

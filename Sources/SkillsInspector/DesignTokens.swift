@@ -1,4 +1,5 @@
 import SwiftUI
+import AStudioFoundation
 #if canImport(UIKit)
 import UIKit
 #else
@@ -94,6 +95,15 @@ public enum DesignTokens {
         public static let lg: CGFloat = 12
         public static let xl: CGFloat = 16
         public static let pill: CGFloat = 999
+    }
+
+    // MARK: - Corner Radius
+
+    public enum CornerRadius {
+        public static let small: CGFloat = 6
+        public static let medium: CGFloat = 8
+        public static let large: CGFloat = 12
+        public static let extraLarge: CGFloat = 16
     }
 
     public enum Shadow {

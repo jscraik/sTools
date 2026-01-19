@@ -178,10 +178,11 @@ struct SyncView: View {
             Divider()
 
             // Auto-Sync logic (Debounced)
-            .task(id: recursive) { try? await Task.sleep(nanoseconds: 500_000_000); await autoSyncIfReady() }
-            .task(id: maxDepth) { try? await Task.sleep(nanoseconds: 800_000_000); await autoSyncIfReady() }
-            .task(id: excludeInput) { try? await Task.sleep(nanoseconds: 1_200_000_000); await autoSyncIfReady() }
-            .task(id: excludeGlobInput) { try? await Task.sleep(nanoseconds: 1_200_000_000); await autoSyncIfReady() }
+            // DISABLED: Causing continuous flickering - sync updates properties which trigger more syncs
+            // .task(id: recursive) { try? await Task.sleep(nanoseconds: 500_000_000); await autoSyncIfReady() }
+            // .task(id: maxDepth) { try? await Task.sleep(nanoseconds: 800_000_000); await autoSyncIfReady() }
+            // .task(id: excludeInput) { try? await Task.sleep(nanoseconds: 1_200_000_000); await autoSyncIfReady() }
+            // .task(id: excludeGlobInput) { try? await Task.sleep(nanoseconds: 1_200_000_000); await autoSyncIfReady() }
             .onReceive(NotificationCenter.default.publisher(for: .runScan)) { _ in
                 Task { await autoSyncIfReady() }
             }
