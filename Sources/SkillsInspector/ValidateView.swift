@@ -61,6 +61,16 @@ struct ValidateView: View {
         .onReceive(NotificationCenter.default.publisher(for: .clearCache)) { _ in
             Task { await viewModel.clearCache() }
         }
+        .onChange(of: viewModel.scanError) { _, error in
+            if let error = error {
+                toastMessage = ToastMessage(style: .error, message: error)
+            }
+        }
+        .onChange(of: viewModel.scanSuccessMessage) { _, message in
+            if let message = message {
+                toastMessage = ToastMessage(style: .success, message: message)
+            }
+        }
     }
 }
 
@@ -256,14 +266,15 @@ private extension ValidateView {
             }
         }
         // Auto-scan on critical setting changes (Debounced)
-        .task(id: viewModel.recursive) { 
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            await autoScanIfReady() 
-        }
-        .task(id: viewModel.effectiveExcludes) { 
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            await autoScanIfReady() 
-        }
+        // DISABLED: Causing continuous flickering - scan updates properties which trigger more scans
+        // .task(id: viewModel.recursive) {
+        //     try? await Task.sleep(nanoseconds: 800_000_000)
+        //     await autoScanIfReady()
+        // }
+        // .task(id: viewModel.effectiveExcludes) {
+        //     try? await Task.sleep(nanoseconds: 1_200_000_000)
+        //     await autoScanIfReady()
+        // }
     }
 
     private func severityBadge(count: Int, severity: Severity, isActive: Bool) -> some View {
