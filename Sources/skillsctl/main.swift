@@ -50,7 +50,7 @@ struct Remote: ParsableCommand {
 struct Telemetry: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Manage telemetry and metrics data.",
-        subcommands: [TelemetryCleanup.self]
+        subcommands: [TelemetryCleanup.self, TelemetryExport.self]
     )
 }
 
@@ -92,6 +92,167 @@ struct TelemetryCleanup: ParsableCommand {
         } else {
             print("ℹ️  No entries to delete (all entries within \(days)-day retention)")
         }
+    }
+}
+
+struct TelemetryExport: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Export ledger entries for debugging.",
+        discussion: """
+        Exports telemetry entries from the ledger in JSON or CSV format.
+        All paths are redacted (home directory replaced with ~).
+        PII is scrubbed from skill names.
+        """
+    )
+
+    @Option(name: .customLong("format"), help: "Output format: json|csv", completion: .list(["json", "csv"]))
+    var format: String = "json"
+
+    @Option(name: .customLong("since"), help: "Export entries since this date (ISO8601)")
+    var sinceDate: String?
+
+    @Option(name: .customLong("until"), help: "Export entries until this date (ISO8601)")
+    var untilDate: String?
+
+    @Option(name: .customLong("output"), help: "Output file path (default: stdout)")
+    var outputPath: String?
+
+    @Option(name: .customLong("limit"), help: "Maximum entries to export (default: 200)")
+    var limit: Int = 200
+
+    @Option(name: .customLong("ledger-path"), help: "Path to ledger database")
+    var ledgerPath: String?
+
+    func run() async throws {
+        let ledgerURL: URL
+        if let path = ledgerPath, !path.isEmpty {
+            ledgerURL = URL(fileURLWithPath: PathUtil.expandTilde(path))
+        } else {
+            ledgerURL = SkillLedger.defaultStoreURL()
+        }
+
+        let ledger = try SkillLedger(url: ledgerURL)
+
+        // Parse date filters
+        let since = sinceDate.flatMap { ISO8601DateFormatter().date(from: $0) }
+        let until = untilDate.flatMap { ISO8601DateFormatter().date(from: $0) }
+
+        let events = try await ledger.fetchEvents(limit: limit, since: since)
+
+        // Filter by until date if provided
+        let filtered = if let until {
+            events.filter { $0.timestamp <= until }
+        } else {
+            events
+        }
+
+        let output: String
+        switch format.lowercased() {
+        case "csv":
+            output = exportAsCSV(filtered)
+        case "json":
+            output = exportAsJSON(filtered)
+        default:
+            throw ValidationError("Invalid format: \(format). Use 'json' or 'csv'.")
+        }
+
+        if let path = outputPath {
+            let url = URL(fileURLWithPath: PathUtil.expandTilde(path))
+            try output.write(to: url, atomically: true, encoding: .utf8)
+            print("Exported \(filtered.count) entr\(filtered.count == 1 ? "y" : "ies") to \(url.path)")
+        } else {
+            print(output)
+        }
+    }
+
+    private func exportAsJSON(_ events: [LedgerEvent]) -> String {
+        struct ExportEntry: Codable {
+            let id: Int64
+            let timestamp: String
+            let eventType: String
+            let skillName: String
+            let skillSlug: String?
+            let version: String?
+            let agent: String?
+            let status: String
+            let note: String?
+            let source: String?
+            let targetPath: String?
+            let timeoutCount: Int?
+            let retryCount: Int?
+            let timeoutDuration: Double?
+        }
+
+        let formatter = ISO8601DateFormatter()
+        let entries = events.map { event in
+            ExportEntry(
+                id: event.id,
+                timestamp: formatter.string(from: event.timestamp),
+                eventType: event.eventType.rawValue,
+                skillName: TelemetryRedactor.redactSkillName(event.skillName),
+                skillSlug: event.skillSlug,
+                version: event.version,
+                agent: event.agent?.rawValue,
+                status: event.status.rawValue,
+                note: event.note,
+                source: event.source,
+                targetPath: event.targetPath.map(TelemetryRedactor.redactPath),
+                timeoutCount: event.timeoutCount,
+                retryCount: event.retryCount,
+                timeoutDuration: event.timeoutDuration
+            )
+        }
+
+        let result: [String: Any] = [
+            "count": entries.count,
+            "exportedAt": formatter.string(from: Date()),
+            "redactionNotice": "Paths have been redacted (home directory replaced with ~). PII has been scrubbed from skill names.",
+            "entries": entries
+        ]
+
+        if let data = try? JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]),
+           let text = String(data: data, encoding: .utf8) {
+            return text
+        }
+        return "{}"
+    }
+
+    private func exportAsCSV(_ events: [LedgerEvent]) -> String {
+        var lines: [String] = []
+        lines.append("# sTools Telemetry Export")
+        lines.append("# Exported at: \(ISO8601DateFormatter().string(from: Date()))")
+        lines.append("# Notice: Paths redacted (home -> ~), PII scrubbed from skill names")
+        lines.append("id,timestamp,event_type,skill_name,skill_slug,version,agent,status,note,source,target_path,timeout_count,retry_count,timeout_duration")
+
+        let formatter = ISO8601DateFormatter()
+        for event in events {
+            let fields: [String] = [
+                String(event.id),
+                formatter.string(from: event.timestamp),
+                event.eventType.rawValue,
+                TelemetryRedactor.redactSkillName(event.skillName),
+                event.skillSlug ?? "",
+                event.version ?? "",
+                event.agent?.rawValue ?? "",
+                event.status.rawValue,
+                event.note ?? "",
+                event.source ?? "",
+                event.targetPath.map(TelemetryRedactor.redactPath) ?? "",
+                String(event.timeoutCount ?? 0),
+                String(event.retryCount ?? 0),
+                String(event.timeoutDuration ?? 0)
+            ]
+            lines.append(fields.map { escapeCSV($0) }.joined(separator: ","))
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private func escapeCSV(_ field: String) -> String {
+        if field.contains(",") || field.contains("\"") || field.contains("\n") {
+            return "\"\(field.replacingOccurrences(of: "\"", with: "\"\""))\""
+        }
+        return field
     }
 }
 
