@@ -28,6 +28,8 @@ final class IndexViewModel: ObservableObject {
     @Published var existingVersion = ""
     @Published var expandedSkills: Set<String> = []
     @Published var selectedPath: String?
+    @Published var generateError: String?
+    @Published var generateSuccessMessage: String?
     private var currentTask: Task<([SkillIndexEntry], String, String), Never>?
     @Published var changelogPath: URL?
     
@@ -53,9 +55,19 @@ final class IndexViewModel: ObservableObject {
         excludes: [String],
         excludeGlobs: [String]
     ) async {
+        // Check if we have valid roots to generate index from
+        let hasValidRoots = !codexRoots.isEmpty || PathUtil.existsDir(claudeRoot)
+        guard hasValidRoots else {
+            generateError = "No valid skill roots configured. Please check your root directories in the sidebar."
+            generateSuccessMessage = nil
+            return
+        }
+
         isGenerating = true
+        generateError = nil
+        generateSuccessMessage = nil
         currentTask?.cancel()
-        
+
         currentTask = Task(priority: .userInitiated) {
             if Task.isCancelled { return ([SkillIndexEntry](), "", "") }
             let entries = SkillIndexer.generate(
@@ -69,14 +81,14 @@ final class IndexViewModel: ObservableObject {
                 excludes: excludes,
                 excludeGlobs: excludeGlobs
             )
-            
+
             let (version, markdown) = SkillIndexer.renderMarkdown(
                 entries: entries,
                 existingVersion: existingVersion.isEmpty ? nil : existingVersion,
                 bump: bump,
                 changelogNote: changelogNote.isEmpty ? nil : changelogNote
             )
-            
+
             return (entries, version, markdown)
         }
         let result = await currentTask?.value ?? ([SkillIndexEntry](), "", "")
@@ -84,7 +96,7 @@ final class IndexViewModel: ObservableObject {
             isGenerating = false
             return
         }
-        
+
         entries = result.0
         generatedVersion = result.1
         generatedMarkdown = result.2
@@ -100,6 +112,10 @@ final class IndexViewModel: ObservableObject {
         writeChangelogFile()
         isGenerating = false
         currentTask = nil
+
+        // Set success message
+        let entryCount = entries.count
+        generateSuccessMessage = "Generated index for \(entryCount) skill\(entryCount == 1 ? "" : "s"). Version \(generatedVersion)."
     }
     
     func copyMarkdown() {
@@ -366,6 +382,17 @@ struct IndexView: View {
         .onReceive(NotificationCenter.default.publisher(for: .cancelScan)) { _ in
             viewModel.cancel()
         }
+        .onChange(of: viewModel.generateError) { _, error in
+            if let error = error {
+                toastMessage = ToastMessage(style: .error, message: error)
+            }
+        }
+        .onChange(of: viewModel.generateSuccessMessage) { _, message in
+            if let message = message {
+                toastMessage = ToastMessage(style: .success, message: message)
+            }
+        }
+        .toast($toastMessage)
     }
     
     // Helper to compute effective roots based on shared mode
@@ -792,6 +819,7 @@ private extension IndexView {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
 }
 
 // MARK: - Actions

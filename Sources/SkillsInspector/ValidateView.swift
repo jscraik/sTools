@@ -61,6 +61,16 @@ struct ValidateView: View {
         .onReceive(NotificationCenter.default.publisher(for: .clearCache)) { _ in
             Task { await viewModel.clearCache() }
         }
+        .onChange(of: viewModel.scanError) { _, error in
+            if let error = error {
+                toastMessage = ToastMessage(style: .error, message: error)
+            }
+        }
+        .onChange(of: viewModel.scanSuccessMessage) { _, message in
+            if let message = message {
+                toastMessage = ToastMessage(style: .success, message: message)
+            }
+        }
     }
 }
 

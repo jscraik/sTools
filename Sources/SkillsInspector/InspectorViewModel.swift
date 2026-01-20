@@ -54,6 +54,8 @@ final class InspectorViewModel: ObservableObject {
     @Published var filesScanned = 0
     @Published var totalFiles = 0
     @Published var cacheHits = 0
+    @Published var scanError: String?
+    @Published var scanSuccessMessage: String?
 
     private var currentScanID: UUID = UUID()
     private var fileWatcher: FileWatcher?
@@ -120,6 +122,20 @@ final class InspectorViewModel: ObservableObject {
         scanTask?.cancel()
         scanTask = nil
 
+        // Check if we have any valid roots to scan
+        let hasValidRoots = !codexRoots.isEmpty || validateRoot(claudeRoot)
+        guard hasValidRoots else {
+            // No valid roots configured - don't scan
+            await MainActor.run {
+                self.isScanning = false
+                self.findings = []
+                self.filesScanned = 0
+                self.totalFiles = 0
+                self.scanError = "No valid scan roots configured. Please check your root directories in the sidebar."
+            }
+            return
+        }
+
         // Generate unique scan ID to track this specific scan
         let scanID = UUID()
         currentScanID = scanID
@@ -130,6 +146,7 @@ final class InspectorViewModel: ObservableObject {
         filesScanned = 0
         totalFiles = 0
         cacheHits = 0
+        scanError = nil  // Clear any previous error
         let started = Date()
 
         let codexRootsCopy = codexRoots
@@ -227,6 +244,14 @@ final class InspectorViewModel: ObservableObject {
                 self.lastScanAt = Date()
                 self.lastScanDuration = Date().timeIntervalSince(started)
                 self.scanProgress = 1.0
+                self.scanError = nil
+
+                // Show success message if no findings
+                if findingsWithFixes.isEmpty {
+                    self.scanSuccessMessage = "All skills are valid! Scanned \(stats.scannedFiles) files."
+                } else {
+                    self.scanSuccessMessage = nil
+                }
             }
         }
 

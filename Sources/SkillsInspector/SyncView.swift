@@ -6,6 +6,8 @@ final class SyncViewModel: ObservableObject {
     @Published var report: MultiSyncReport = MultiSyncReport()
     @Published var isRunning = false
     @Published var selection: SyncSelection?
+    @Published var syncError: String?
+    @Published var syncSuccessMessage: String?
     private var currentTask: Task<MultiSyncReport, Never>?
 
     enum SyncSelection: Hashable {
@@ -20,7 +22,16 @@ final class SyncViewModel: ObservableObject {
         excludes: [String],
         excludeGlobs: [String]
     ) async {
+        // Check if we have valid roots to sync
+        guard !roots.isEmpty else {
+            syncError = "No valid roots configured for sync. Please check your root directories in the sidebar."
+            syncSuccessMessage = nil
+            return
+        }
+
         isRunning = true
+        syncError = nil
+        syncSuccessMessage = nil
         currentTask?.cancel()
         currentTask = Task(priority: .userInitiated) {
             if Task.isCancelled { return MultiSyncReport() }
@@ -38,6 +49,15 @@ final class SyncViewModel: ObservableObject {
             return
         }
         report = result
+
+        // Set success message based on results
+        let totalIssues = result.missingByAgent.values.reduce(0) { $0 + $1.count } + result.differentContent.count
+        if totalIssues == 0 {
+            syncSuccessMessage = "All skills are in sync across \(roots.count) roots!"
+        } else {
+            syncSuccessMessage = "Found \(totalIssues) difference\(totalIssues == 1 ? "" : "s") across \(roots.count) roots."
+        }
+
         isRunning = false
         currentTask = nil
     }
@@ -65,6 +85,7 @@ struct SyncView: View {
     @Binding var excludeGlobInput: String
     @AppStorage("useSharedSkillsRoot") private var useSharedSkillsRoot = false
     @State private var expandedMissing: Set<AgentKind> = []
+    @State private var toastMessage: ToastMessage? = nil
 
     var body: some View {
         let rootsValid = useSharedSkillsRoot ? PathUtil.existsDir(activeCodexRoot) : (PathUtil.existsDir(activeCodexRoot) && PathUtil.existsDir(claudeRoot))

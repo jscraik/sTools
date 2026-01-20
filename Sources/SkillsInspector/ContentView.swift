@@ -6,12 +6,18 @@ import AStudioThemes
 import AStudioComponents
 
 struct LegacyContentView: View {
+    // AppDependencies with lazy initialization
+    @StateObject private var dependencies: AppDependencies = AppDependencies()
+
+    // Lightweight ViewModels that can initialize synchronously
     @StateObject private var viewModel = InspectorViewModel()
     @StateObject private var syncVM = SyncViewModel()
     @StateObject private var indexVM = IndexViewModel()
-    @StateObject private var changelogVM: ChangelogViewModel
-    @StateObject private var trustStoreVM = TrustStoreViewModel()
-    @StateObject private var remoteVM: RemoteViewModel
+
+    // ViewModels created once when their views are first accessed
+    @StateObject private var remoteVMFactory = RemoteViewModelFactory()
+    @StateObject private var changelogVMFactory = ChangelogViewModelFactory()
+
     @State private var mode: AppMode = .validate
     @State private var severityFilter: Severity? = nil
     @State private var agentFilter: AgentKind? = nil
@@ -104,6 +110,63 @@ struct LegacyContentView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text(rootErrorMessage)
+        }
+    }
+
+    // MARK: - Detail Content
+    @ViewBuilder
+    private var detailContent: some View {
+        switch mode {
+        case .validate:
+            ValidateView(
+                viewModel: viewModel,
+                severityFilter: $severityFilter,
+                agentFilter: $agentFilter,
+                searchText: $searchText
+            )
+            .id("validate-view")
+        case .stats:
+            StatsView(
+                viewModel: viewModel,
+                mode: $mode,
+                severityFilter: $severityFilter,
+                agentFilter: $agentFilter
+            )
+            .id("stats-view")
+        case .sync:
+            SyncView(
+                viewModel: syncVM,
+                codexRoots: $viewModel.codexRoots,
+                claudeRoot: $viewModel.claudeRoot,
+                copilotRoot: $viewModel.copilotRoot,
+                codexSkillManagerRoot: $viewModel.codexSkillManagerRoot,
+                recursive: $viewModel.recursive,
+                maxDepth: $viewModel.maxDepth,
+                excludeInput: $viewModel.excludeInput,
+                excludeGlobInput: $viewModel.excludeGlobInput
+            )
+            .id("sync-view")
+        case .index:
+            IndexView(
+                viewModel: indexVM,
+                codexRoots: viewModel.codexRoots,
+                claudeRoot: viewModel.claudeRoot,
+                codexSkillManagerRoot: viewModel.codexSkillManagerRoot,
+                copilotRoot: viewModel.copilotRoot,
+                recursive: $viewModel.recursive,
+                excludes: viewModel.effectiveExcludes,
+                excludeGlobs: viewModel.effectiveGlobExcludes
+            )
+            .id("index-view")
+        case .remote:
+            RemoteView(
+                viewModel: remoteVMFactory.makeViewModel(dependencies: dependencies),
+                trustStoreVM: dependencies.trustStoreVM
+            )
+            .id("remote-view")
+        case .changelog:
+            ChangelogView(viewModel: changelogVMFactory.makeViewModel(dependencies: dependencies))
+            .id("changelog-view")
         }
     }
 
