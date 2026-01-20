@@ -17,6 +17,11 @@ public struct LedgerEventInput: Sendable {
     public let perTargetResults: [AgentKind: String]?
     public let signerKeyId: String?
 
+    // Network resilience metrics (P3)
+    public let timeoutCount: Int?
+    public let retryCount: Int?
+    public let timeoutDuration: TimeInterval?
+
     public init(
         timestamp: Date? = nil,
         eventType: LedgerEventType,
@@ -32,7 +37,10 @@ public struct LedgerEventInput: Sendable {
         targetPath: String? = nil,
         targets: [AgentKind]? = nil,
         perTargetResults: [AgentKind: String]? = nil,
-        signerKeyId: String? = nil
+        signerKeyId: String? = nil,
+        timeoutCount: Int? = nil,
+        retryCount: Int? = nil,
+        timeoutDuration: TimeInterval? = nil
     ) {
         self.timestamp = timestamp
         self.eventType = eventType
@@ -49,5 +57,8 @@ public struct LedgerEventInput: Sendable {
         self.targets = targets
         self.perTargetResults = perTargetResults
         self.signerKeyId = signerKeyId
+        self.timeoutCount = timeoutCount
+        self.retryCount = retryCount
+        self.timeoutDuration = timeoutDuration
     }
 }

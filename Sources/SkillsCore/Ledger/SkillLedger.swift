@@ -42,7 +42,10 @@ public actor SkillLedger {
             target_path TEXT,
             targets TEXT,
             per_target_results TEXT,
-            signer_key_id TEXT
+            signer_key_id TEXT,
+            timeout_count INTEGER DEFAULT 0,
+            retry_count INTEGER DEFAULT 0,
+            timeout_duration REAL
         );
         CREATE INDEX IF NOT EXISTS idx_ledger_events_time ON ledger_events(timestamp);
         CREATE INDEX IF NOT EXISTS idx_ledger_events_skill ON ledger_events(skill_name);
@@ -54,6 +57,10 @@ public actor SkillLedger {
         try SkillLedger.addColumnIfNeeded(db: db, table: "ledger_events", column: "targets", type: "TEXT")
         try SkillLedger.addColumnIfNeeded(db: db, table: "ledger_events", column: "per_target_results", type: "TEXT")
         try SkillLedger.addColumnIfNeeded(db: db, table: "ledger_events", column: "signer_key_id", type: "TEXT")
+        // Network resilience metrics (P3)
+        try SkillLedger.addColumnIfNeeded(db: db, table: "ledger_events", column: "timeout_count", type: "INTEGER")
+        try SkillLedger.addColumnIfNeeded(db: db, table: "ledger_events", column: "retry_count", type: "INTEGER")
+        try SkillLedger.addColumnIfNeeded(db: db, table: "ledger_events", column: "timeout_duration", type: "REAL")
     }
 
     deinit {
@@ -91,8 +98,11 @@ public actor SkillLedger {
             target_path,
             targets,
             per_target_results,
-            signer_key_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            signer_key_id,
+            timeout_count,
+            retry_count,
+            timeout_duration
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         let stmt = try prepare(sql: sql)
         defer { sqlite3_finalize(stmt) }
@@ -113,6 +123,14 @@ public actor SkillLedger {
         bindText(stmt, index, SkillLedger.encodeAgentArray(input.targets)); index += 1
         bindText(stmt, index, SkillLedger.encodePerTargetResults(input.perTargetResults)); index += 1
         bindText(stmt, index, input.signerKeyId); index += 1
+        // Network resilience metrics (P3)
+        sqlite3_bind_int(stmt, index, Int32(input.timeoutCount ?? 0)); index += 1
+        sqlite3_bind_int(stmt, index, Int32(input.retryCount ?? 0)); index += 1
+        if let duration = input.timeoutDuration {
+            sqlite3_bind_double(stmt, index, duration); index += 1
+        } else {
+            sqlite3_bind_null(stmt, index); index += 1
+        }
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             throw LedgerStoreError(String(cString: sqlite3_errmsg(db)))
