@@ -88,13 +88,15 @@ struct GeneralTabView: View {
     @AppStorage("useSharedSkillsRoot") private var useSharedSkillsRoot = false
     @AppStorage("showFileCounts") private var showFileCounts = true
     @AppStorage("confirmDeletion") private var confirmDeletion = true
-    
+    @AppStorage("telemetryEnabled") private var telemetryEnabled = false
+
     var body: some View {
         ScrollView {
             VStack(spacing: DesignTokens.Spacing.sm) {
                 scanningCard
                 displayCard
                 safetyCard
+                telemetryCard
             }
             .padding(DesignTokens.Spacing.sm)
         }
@@ -160,7 +162,7 @@ struct GeneralTabView: View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
             Label("Safety", systemImage: "shield")
                 .heading3()
-            
+
             Toggle(isOn: $confirmDeletion) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Confirm deletion")
@@ -175,6 +177,49 @@ struct GeneralTabView: View {
         .padding(.horizontal, DesignTokens.Spacing.xs)
         .padding(.vertical, DesignTokens.Spacing.xxs)
         .cardStyle(tint: DesignTokens.Colors.Accent.orange)
+    }
+
+    private var telemetryCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+            Label("Telemetry", systemImage: "chart.xyaxis.line")
+                .heading3()
+
+            Toggle(isOn: $telemetryEnabled) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Enable telemetry")
+                        .font(.callout)
+                    Text("Help improve sTools by sharing anonymous usage metrics")
+                        .captionText()
+                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+
+            if telemetryEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(DesignTokens.Colors.Status.success)
+                        Text("Metrics are stored locally for 30 days")
+                            .captionText()
+                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                    }
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(DesignTokens.Colors.Status.success)
+                        Text("No personal data or file paths are collected")
+                            .captionText()
+                            .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(.horizontal, DesignTokens.Spacing.xs)
+        .padding(.vertical, DesignTokens.Spacing.xxs)
+        .cardStyle(tint: DesignTokens.Colors.Accent.pink)
     }
 }
 
