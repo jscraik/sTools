@@ -43,3 +43,8 @@ Icon?
 
 # Keep Package.resolved for dependency locking
 # Keep Icon.icns and Icon.png as they appear to be project assets
+
+# AI artifacts - transient only
+/ai/tmp/
+/ai/cache/
+/ai/raw/
