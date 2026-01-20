@@ -76,6 +76,27 @@
 - Keep design tokens authoritative; add tokens before using raw hex/spacing.
 - Remote flows follow schemas in `docs/schema/`; keep API changes documented.
 
+## Publishing Tool Pinning (Decision Record)
+
+**Decision**: Use **native Swift** for core publishing workflow. No external tool dependency required.
+
+### Rationale
+- `SkillPublisher` (Sources/SkillsCore/Publish/SkillPublisher.swift) implements:
+  - Deterministic zip creation via `/usr/bin/zip` (system utility)
+  - Ed25519 signatures via `CryptoKit` (native framework)
+  - Attestation generation in native Swift
+- Optional external tools can be configured via `ToolConfig` for post-processing (e.g., upload to registry)
+
+### Tool Verification
+- When using external tools via `ToolConfig`, pin via SHA256/SHA512 hash
+- Example: `ToolConfig(toolPath: "/usr/local/bin/my-uploader", expectedSHA256: "abc123...")`
+- Publisher validates tool hash before execution
+
+### No SPM Dependency Needed
+- No need for `clawdhub`, `swift-sh`, or other publishing packages
+- System `zip` utility is sufficient and deterministic
+- If future needs arise, can add via Package.swift with hash verification
+
 ## Agent Instructions
 
 - Read before significant work: `~/.codex/AGENTS.override.md`, `AGENTS.md`,

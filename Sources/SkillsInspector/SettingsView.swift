@@ -10,6 +10,7 @@ struct SettingsView: View {
         case general = "General"
         case editor = "Editor"
         case appearance = "Appearance"
+        case trust = "Trust"
         case privacy = "Privacy"
 
         var icon: String {
@@ -17,6 +18,7 @@ struct SettingsView: View {
             case .general: return "gearshape"
             case .editor: return "pencil"
             case .appearance: return "paintbrush"
+            case .trust: return "hand.raised.fill"
             case .privacy: return "hand.raised.fill"
             }
         }
@@ -44,6 +46,12 @@ struct SettingsView: View {
                         Label(SettingsTab.appearance.rawValue, systemImage: SettingsTab.appearance.icon)
                     }
                     .tag(SettingsTab.appearance)
+
+                TrustTabView()
+                    .tabItem {
+                        Label(SettingsTab.trust.rawValue, systemImage: SettingsTab.trust.icon)
+                    }
+                    .tag(SettingsTab.trust)
 
                 PrivacyTabView()
                     .tabItem {
@@ -355,6 +363,186 @@ struct AppearanceTabView: View {
         case "pink": return .pink
         case "red": return .red
         default: return DesignTokens.Colors.Accent.blue
+        }
+    }
+}
+
+// MARK: - Trust Tab
+
+struct TrustTabView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel = TrustStoreViewModel()
+    @State private var showAddKeySheet = false
+    @State private var newKeyId = ""
+    @State private var newPublicKey = ""
+    @State private var newScopeSlug = ""
+
+    private var activeKeys: [RemoteTrustStore.TrustedKey] {
+        viewModel.keys.filter { !viewModel.revokedKeyIds.contains($0.keyId) }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: DesignTokens.Spacing.sm) {
+                infoCard
+                keysCard
+            }
+            .padding(DesignTokens.Spacing.sm)
+        }
+        .background(DesignTokens.Colors.Background.secondary)
+        .sheet(isPresented: $showAddKeySheet) {
+            addKeySheet
+        }
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            Button("OK") { viewModel.clearError() }
+        } message: {
+            if let error = viewModel.errorMessage {
+                Text(error)
+            }
+        }
+    }
+
+    private var infoCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+            Label("Trusted Signers", systemImage: "hand.raised.fill")
+                .heading3()
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Manage trusted public keys for skill signature verification.")
+                    .font(.callout)
+                Text("Keys added here will be used to verify signatures when installing remote skills.")
+                    .captionText()
+                    .foregroundStyle(DesignTokens.Colors.Text.secondary)
+            }
+        }
+        .padding(.horizontal, DesignTokens.Spacing.xs)
+        .padding(.vertical, DesignTokens.Spacing.xxs)
+        .cardStyle(tint: DesignTokens.Colors.Accent.blue)
+    }
+
+    private var keysCard: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
+            HStack {
+                Label("Trusted Keys", systemImage: "key.fill")
+                    .heading3()
+                Spacer()
+                Button("Trust Signer") {
+                    newKeyId = ""
+                    newPublicKey = ""
+                    newScopeSlug = ""
+                    showAddKeySheet = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+            if activeKeys.isEmpty {
+                emptyState
+            } else {
+                VStack(spacing: DesignTokens.Spacing.xxs) {
+                    ForEach(activeKeys, id: \.keyId) { key in
+                        keyRow(key)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, DesignTokens.Spacing.xs)
+        .padding(.vertical, DesignTokens.Spacing.xxs)
+        .cardStyle(tint: DesignTokens.Colors.Accent.green)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: DesignTokens.Spacing.xs) {
+            Image(systemName: "key.slash")
+                .font(.system(size: 40))
+                .foregroundStyle(DesignTokens.Colors.Text.secondary)
+            Text("No trusted keys yet")
+                .font(.callout)
+                .foregroundStyle(DesignTokens.Colors.Text.secondary)
+            Text("Add a trusted signer key to begin verifying skill signatures.")
+                .captionText()
+                .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, DesignTokens.Spacing.md)
+    }
+
+    private func keyRow(_ key: RemoteTrustStore.TrustedKey) -> some View {
+        HStack(spacing: DesignTokens.Spacing.xs) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(key.keyId)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .textSelection(.enabled)
+
+                if let allowedSlugs = key.allowedSlugs, !allowedSlugs.isEmpty {
+                    Text("Scoped to: \(allowedSlugs.joined(separator: ", "))")
+                        .captionText()
+                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                } else {
+                    Text("All skills")
+                        .captionText()
+                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                }
+            }
+
+            Spacer()
+
+            Button("Remove") {
+                viewModel.revokeKey(keyId: key.keyId)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, DesignTokens.Spacing.xs)
+        .padding(.vertical, DesignTokens.Spacing.xxs)
+        .background(DesignTokens.Colors.Background.tertiary.opacity(0.5))
+        .cornerRadius(6)
+    }
+
+    private var addKeySheet: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("Key Information")) {
+                    TextField("Key ID", text: $newKeyId)
+                        .textFieldStyle(.roundedBorder)
+                    #if os(macOS)
+                    TextEditor(text: $newPublicKey)
+                        .frame(minHeight: 80)
+                        .border(DesignTokens.Colors.Border.light)
+                    #else
+                    TextField("Public Key (Base64)", text: $newPublicKey, axis: .vertical)
+                        .lineLimit(3...6)
+                        .textFieldStyle(.roundedBorder)
+                    #endif
+                    TextField("Scope Slug (optional)", text: $newScopeSlug)
+                        .textFieldStyle(.roundedBorder)
+                    Text("Leave scope empty to trust all skills from this signer")
+                        .captionText()
+                        .foregroundStyle(DesignTokens.Colors.Text.secondary)
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Trust Signer")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showAddKeySheet = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        viewModel.addTrustedKey(
+                            keyId: newKeyId,
+                            publicKeyBase64: newPublicKey,
+                            allowedSlugs: newScopeSlug.isEmpty ? nil : [newScopeSlug]
+                        )
+                        showAddKeySheet = false
+                    }
+                    .disabled(newKeyId.isEmpty || newPublicKey.isEmpty)
+                }
+            }
         }
     }
 }
