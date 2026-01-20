@@ -36,11 +36,23 @@ public struct RemoteSkillClient: Sendable {
 }
 
 public extension RemoteSkillClient {
-    // Shared URLSession with cache (10MB memory, 50MB disk)
+    // Shared URLSession with cache (10MB memory, 50MB disk) and network timeouts
     static let sharedSession: URLSession = {
         let cache = URLCache(memoryCapacity: 10 * 1024 * 1024, diskCapacity: 50 * 1024 * 1024)
         let config = URLSessionConfiguration.default
         config.urlCache = cache
+        // 30 second read timeout (spec requirement for network resilience)
+        config.timeoutIntervalForRequest = 30.0
+        return URLSession(configuration: config)
+    }()
+
+    /// URLSession with short timeout for health check / connectivity tests
+    static let shortTimeoutSession: URLSession = {
+        let cache = URLCache(memoryCapacity: 10 * 1024 * 1024, diskCapacity: 50 * 1024 * 1024)
+        let config = URLSessionConfiguration.default
+        config.urlCache = cache
+        // 5 second timeout for quick checks
+        config.timeoutIntervalForRequest = 5.0
         return URLSession(configuration: config)
     }()
 
