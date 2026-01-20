@@ -67,6 +67,17 @@ public struct FeatureFlags: Sendable {
             bulkActions: env.optionalBool("STOOLS_FEATURE_BULK_ACTIONS") ?? fromConfig.bulkActions
         )
     }
+
+    /// Creates feature flags from UserDefaults (for SettingsView sync).
+    public static func fromUserDefaults(_ defaults: UserDefaults = .standard) -> FeatureFlags {
+        FeatureFlags(
+            skillVerification: true,
+            pinnedPublishing: true,
+            crossIDEAdapters: true,
+            telemetryOptIn: defaults.bool(forKey: "telemetryOptIn"),
+            bulkActions: true
+        )
+    }
 }
 
 private extension Dictionary where Key == String, Value == String {
