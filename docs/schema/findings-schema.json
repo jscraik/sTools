@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "skillsctl scan output",
+  "type": "object",
+  "required": ["schemaVersion", "toolVersion", "generatedAt", "scanned", "errors", "warnings", "findings"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1"],
+      "description": "Schema version for compatibility checking"
+    },
+    "toolVersion": {
+      "type": "string",
+      "description": "Version of skillsctl that generated this output"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when scan was generated"
+    },
+    "scanned": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of files/directories scanned"
+    },
+    "errors": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count of error-level findings"
+    },
+    "warnings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count of warning-level findings"
+    },
+    "findings": {
+      "type": "array",
+      "description": "List of validation findings",
+      "items": {
+        "type": "object",
+        "required": ["ruleID", "severity", "agent", "file", "message"],
+        "properties": {
+          "ruleID": {
+            "type": "string",
+            "description": "Unique identifier for the validation rule"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["error", "warning", "info"],
+            "description": "Severity level of the finding"
+          },
+          "agent": {
+            "type": "string",
+            "enum": ["codex", "claude", "copilot", "codexSkillManager"],
+            "description": "AI agent that generated this finding"
+          },
+          "file": {
+            "type": "string",
+            "description": "Path to the file with the finding"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable description of the finding"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Line number where the finding occurs (optional)"
+          },
+          "column": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Column number where the finding occurs (optional)"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "description": "JSON Schema for skillsctl scan output v1. This schema defines the structure of validation findings from scanning Codex, Claude, and Copilot skill files."
+}

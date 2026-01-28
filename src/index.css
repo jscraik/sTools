@@ -1,0 +1,220 @@
+@import "tailwindcss";
+
+/* Design Tokens - per UX spec .spec/ux-2026-01-25-skillsinspector-react-tauri-v1.md */
+
+@theme {
+  /* Color tokens - semantic (light mode default) */
+  --color-background: oklch(98% 0 0);
+  --color-surface: oklch(100% 0 0);
+  --color-text: oklch(15% 0 0);
+  --color-text-muted: oklch(55% 0 0);
+  --color-border: oklch(90% 0 0);
+  --color-primary: oklch(55% 0.2 250);
+  --color-primary-hover: oklch(50% 0.22 250);
+  --color-critical: oklch(55% 0.22 25);
+  --color-critical-bg: oklch(95% 0.15 25);
+  --color-warn: oklch(70% 0.18 80);
+  --color-warn-bg: oklch(97% 0.1 80);
+  --color-success: oklch(60% 0.18 145);
+  --color-success-bg: oklch(96% 0.1 145);
+
+  /* Type scale */
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.875rem;   /* 14px */
+  --font-size-base: 1rem;     /* 16px */
+  --font-size-lg: 1.125rem;   /* 18px */
+  --font-size-xl: 1.5rem;     /* 24px */
+  --font-size-2xl: 2rem;      /* 32px */
+  --font-size-3xl: 3rem;      /* 36px */
+
+  --font-family-sans: system-ui, -apple-system, sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  /* Spacing scale */
+  --spacing-1: 0.25rem;   /* 4px */
+  --spacing-2: 0.5rem;    /* 8px */
+  --spacing-3: 0.75rem;   /* 12px */
+  --spacing-4: 1rem;      /* 16px */
+  --spacing-5: 1.25rem;   /* 20px */
+  --spacing-6: 1.5rem;    /* 24px */
+  --spacing-8: 2rem;      /* 32px */
+  --spacing-12: 3rem;     /* 48px */
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Focus ring */
+  --ring-width: 2px;
+  --ring-color: oklch(55% 0.2 250 / 0.5);
+
+  /* Shadow */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+
+  /* Motion durations */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-medium: 250ms;
+  --duration-slow: 400ms;
+
+  /* Motion easing */
+  --ease-default: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Dark mode colors - outside @theme */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: oklch(15% 0 0);
+    --color-surface: oklch(18% 0 0);
+    --color-text: oklch(95% 0 0);
+    --color-text-muted: oklch(65% 0 0);
+    --color-border: oklch(35% 0 0);
+    --color-primary: oklch(65% 0.22 250);
+    --color-primary-hover: oklch(70% 0.24 250);
+  }
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-background);
+}
+
+/* Focus visible for accessibility */
+:focus-visible {
+  outline: var(--ring-width) solid var(--ring-color);
+  outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Motion utilities */
+@layer utilities {
+  /* Fast hover transitions */
+  .transition-fast {
+    transition: all var(--duration-fast) var(--ease-default);
+  }
+
+  /* Medium transitions */
+  .transition-medium {
+    transition: all var(--duration-medium) var(--ease-default);
+  }
+
+  /* Button press animation */
+  .btn-press:active {
+    transform: scale(0.98);
+  }
+
+  /* Subtle hover lift */
+  .hover-lift {
+    transition: transform var(--duration-fast) var(--ease-default);
+  }
+  .hover-lift:hover {
+    transform: translateY(-1px);
+  }
+
+  /* Fade in animation */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in var(--duration-medium) var(--ease-default);
+  }
+
+  /* Slide in from left */
+  @keyframes slide-in-left {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-slide-in {
+    animation: slide-in-left var(--duration-medium) var(--ease-default);
+  }
+
+  /* Staggered children delay */
+  .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-children > *:nth-child(2) { animation-delay: 30ms; }
+  .stagger-children > *:nth-child(3) { animation-delay: 60ms; }
+  .stagger-children > *:nth-child(4) { animation-delay: 90ms; }
+  .stagger-children > *:nth-child(5) { animation-delay: 120ms; }
+  .stagger-children > *:nth-child(n+6) { animation-delay: 150ms; }
+
+  /* Spinner animation */
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+
+  /* Pulse animation for attention */
+  @keyframes pulse-subtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+  }
+
+  .animate-pulse-subtle {
+    animation: pulse-subtle 2s var(--ease-in-out) infinite;
+  }
+
+  /* Success checkmark animation */
+  @keyframes checkmark {
+    0% {
+      stroke-dashoffset: 24;
+    }
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .animate-checkmark {
+    stroke-dasharray: 24;
+    stroke-dashoffset: 24;
+    animation: checkmark var(--duration-fast) var(--ease-bounce) forwards;
+  }
+}

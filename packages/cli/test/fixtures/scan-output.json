@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "toolVersion": "0.1.0",
+  "generatedAt": "2024-01-27T00:00:00.000Z",
+  "scanned": 2,
+  "errors": 1,
+  "warnings": 1,
+  "findings": [
+    {
+      "ruleID": "CLAUDE-003",
+      "severity": "error",
+      "agent": "claude",
+      "file": "test.ts",
+      "message": "Anthropic SDK import detected",
+      "line": 3
+    },
+    {
+      "ruleID": "CODEX-001",
+      "severity": "warning",
+      "agent": "codex",
+      "file": "config.json",
+      "message": "Codex session log detected"
+    }
+  ]
+}
