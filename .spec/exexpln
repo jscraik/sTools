@@ -14,7 +14,7 @@ After this change, the repository will be a React/Tauri design system project th
 - [x] (2026-01-30) Scaffold the React + Tauri + Vite + Tailwind v4 project in app/ (root directory is non-empty).
 - [x] (2026-01-30) Integrate Apps SDK UI components and establish token wiring (vendored from GitHub and built locally).
 - [x] (2026-01-30) Add Storybook and Argos visual regression baseline (manual addon-vitest setup applied).
-- [ ] (2026-01-30) Add a GPT widgets Storybook story to validate GPT surfaces alongside core components.
+- [x] (2026-01-30) Add a GPT widgets Storybook story to validate GPT surfaces alongside core components.
 - [x] (2026-01-30) Update documentation to match the new stack and workflows (README updated; legacy docs remain for reference).
 - [x] (2026-01-30) Validate the new toolchain and confirm Swift artifacts are absent (pnpm build + pnpm build-storybook + rg swift scan).
 
@@ -116,6 +116,7 @@ The archive tag and branch are the primary rollback path. If the migration fails
 ## Artifacts and Notes
 
 Expected evidence snippets should be captured during implementation, such as the empty output of rg --files -g "*.swift", and a Storybook startup log line showing the local URL. Include these in this section as indented text when the plan is executed.
+    - GPT widgets Storybook story: app/src/stories/GptWidget.stories.tsx
 
 ## Interfaces and Dependencies
 
