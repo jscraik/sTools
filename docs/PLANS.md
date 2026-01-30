@@ -1,4 +1,6 @@
-# Build SwiftPM Skills Tools (scan/sync + CLI/UI/plugin)
+# Legacy ExecPlan — SwiftPM Skills Tools (scan/sync + CLI/UI/plugin)
+
+**Status:** This plan describes the archived Swift implementation. The active migration plan lives in `.spec/exexpln` and should be used for current work.
 
 This ExecPlan stays a living document. Keep `Progress`, `Surprises &
 Discoveries`, `Decision Log`, and `Outcomes & Retrospective` up to date.

@@ -1,57 +1,21 @@
-# SwiftPM build artifacts
-.build/
-.build-*/
-.swiftpm/
-DerivedData/
-*.xcodeproj/
-*.xcworkspace/
+# Node
+app/node_modules/
 
-# Built applications and bundles
-*.app/
-Template.app/
-sTools.app/
+# Vite/Tailwind build output
+app/dist/
+app/storybook-static/
 
-# Distribution files
-*.dmg
-*.pkg
-*.zip
+# Storybook
+app/.storybook/cache/
+app/debug-storybook.log
 
-# macOS system files
+# Tauri / Rust
+app/src-tauri/target/
+app/src-tauri/.tauri/
+app/src-tauri/gen/
+
+# OS
 .DS_Store
-.AppleDouble
-.LSOverride
-Icon?
-._*
-
-# Temporary files
+.build/
+.swiftpm/
 .tmp/
-*.tmp
-*.swp
-*~
-*.bak
-
-# Local development
-.vscode/
-.idea/
-*.sublime-*
-
-# Cache and logs
-*.log
-.cache/
-
-# Local configuration and cache files
-.skillsctl/cache.json
-
-# Ralph Loop (keep config, exclude append-only log)
-.ralph/progress.md
-
-# Keep Package.resolved for dependency locking
-# Keep Icon.icns and Icon.png as they appear to be project assets
-
-# Ralph runtime state (keep config files, ignore logs/state)
-.ralph/logs/
-.ralph/state.json
-.ralph/prompt-*.txt
-
-# Local spec outputs
-.spec/

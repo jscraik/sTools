@@ -1,0 +1,120 @@
+# Remove Swift and rebase the DesignSystem repo on React + Tauri + Apps SDK
+
+This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds. This plan must be maintained in accordance with docs/PLANS.md from the repository root, and the global guidance in /Users/jamiecraik/.codex/instructions/plans.md.
+
+## Purpose / Big Picture
+
+After this change, the repository will be a React/Tauri design system project that uses the Apps SDK UI components, GPT widgets, Vite, Tailwind v4, Storybook, and Argos. A user will be able to run the React/Tauri app and the Storybook catalog with pnpm commands, and there will be no Swift source files or Swift build tooling remaining on the main branch. The previous Swift implementation will be preserved in a clearly labeled archive branch or tag so its history remains accessible without confusing current contributors.
+
+## Progress
+
+- [x] (2026-01-30) ExecPlan drafted and aligned to repo evidence.
+- [x] (2026-01-30) Archive the current Swift state in a dedicated git tag and legacy branch.
+- [x] (2026-01-30) Remove Swift sources and SwiftPM tooling from main branch.
+- [x] (2026-01-30) Scaffold the React + Tauri + Vite + Tailwind v4 project in app/ (root directory is non-empty).
+- [x] (2026-01-30) Integrate Apps SDK UI components and establish token wiring (vendored from GitHub and built locally).
+- [x] (2026-01-30) Add Storybook and Argos visual regression baseline (manual addon-vitest setup applied).
+- [x] (2026-01-30) Update documentation to match the new stack and workflows (README updated; legacy docs remain for reference).
+- [x] (2026-01-30) Validate the new toolchain and confirm Swift artifacts are absent (pnpm build + pnpm build-storybook + rg swift scan).
+
+## Surprises & Discoveries
+
+- The repo remains Swift-first with SwiftPM build/test commands and Swift prerequisites in README, despite the stated React/Tauri target direction.
+  Evidence: README.md.
+- Storybook init succeeded but requires manual addon-vitest setup (unable to auto-update Vite config).
+  Evidence: Storybook init output (manual setup notice).
+- Apps SDK UI could not be consumed from npm/GitHub tarball because the published package omits built assets; vendored source build required.
+  Evidence: missing dist in node_modules and vendor build output.
+
+## Decision Log
+
+- Decision: Archive the current Swift state via a git tag and a legacy branch before removal.
+  Rationale: Preserves history and allows rollback without keeping Swift in mainline.
+  Date/Author: 2026-01-30 / Codex + Jamie.
+- Decision: Use a single-app structure in app/ (Vite + React + Tauri with Storybook) before considering a monorepo split.
+  Rationale: Minimizes complexity while establishing the required stack and visual regression workflow without displacing existing docs.
+  Date/Author: 2026-01-30 / Codex + Jamie.
+- Decision: Vendor Apps SDK UI from GitHub and build locally because the package tarball omits dist artifacts.
+  Rationale: Provides deterministic access to UI components when npm registry packaging is incomplete.
+  Date/Author: 2026-01-30 / Codex + Jamie.
+
+## Outcomes & Retrospective
+
+Not started. This section will capture the final state of the migration, what worked, what was deferred, and any lessons learned.
+
+## Context and Orientation
+
+This repository currently contains extensive Swift sources in Sources/SkillsInspector, Sources/SkillsCore, Sources/skillsctl, and a SwiftPM plugin in Plugins/SkillsLintPlugin. The README and build instructions are Swift-centric, requiring Swift 6.2 and SwiftPM commands. The desired target stack is React + Tauri + Apps SDK + Vite + Tailwind v4 + Argos + Storybook, but no JavaScript/TypeScript scaffold exists yet. The plan replaces the Swift stack on the main branch while preserving the Swift implementation in an archive branch or tag.
+
+Terms:
+- “Archive branch” means a git branch that preserves the Swift repo state and is not intended for ongoing development.
+- “Archive tag” means a git tag pointing to the last Swift commit.
+- “Main branch” means the default branch that should contain only the React/Tauri stack after this plan is complete.
+
+## Plan of Work
+
+Milestone 1 focuses on preserving the Swift history safely. Create a dedicated archive tag and a legacy branch (for example, legacy/swift-archive-2026-01-30) before any deletion. This is the rollback anchor if the migration fails. Ensure the archive is pushed and clearly labeled.
+
+Milestone 2 removes Swift artifacts from mainline. Delete Swift sources, SwiftPM configuration, SwiftPM plugin, and Swift test targets. Update README and any Swift-specific docs to reflect the new stack or move them into a legacy documentation area if needed. Ensure the repo no longer references Swift commands or Swift prerequisites.
+
+Milestone 3 scaffolds the React + Tauri + Vite project in an app/ subdirectory because the repo root is non-empty with docs and assets. Use pnpm as the package manager. Configure Tailwind v4, vendor the Apps SDK UI library as a git submodule, build it locally, and establish token wiring aligned to the migration report. Create a minimal app shell that renders a layout using Apps SDK UI components so the stack is exercised early.
+
+Milestone 4 adds Storybook and Argos. Configure Storybook to render core components from the design system. Add Argos integration to capture visual snapshots. Define a minimal set of stories that prove the baseline.
+
+Milestone 5 validates the new workflow. Run lint, typecheck, Storybook build, and any Argos snapshot generation. Confirm there are zero Swift files and no SwiftPM config in mainline. Update documentation to match the new commands.
+
+## Concrete Steps
+
+All commands should run from /Users/jamiecraik/dev/DesignSystem unless stated otherwise. Use zsh -lc to ensure mise and Homebrew tools are on PATH.
+
+Archive steps (Milestone 1):
+    git status
+    git tag swift-archive-2026-01-30
+    git branch legacy/swift-archive-2026-01-30
+    git push origin swift-archive-2026-01-30 legacy/swift-archive-2026-01-30
+
+Removal steps (Milestone 2):
+    rg --files -g "*.swift"
+    git rm -r Sources Tests Plugins Package.swift Package.resolved
+    rg --files -g "*.swift"   (expect no output)
+
+Scaffold steps (Milestone 3):
+    pnpm create tauri-app@latest app -y -t react-ts -m pnpm
+    git submodule add https://github.com/openai/apps-sdk-ui.git vendor/apps-sdk-ui
+    cd vendor/apps-sdk-ui
+    pnpm install
+    pnpm build
+    cd ../../app
+    pnpm install
+    pnpm add -D tailwindcss postcss autoprefixer @tailwindcss/vite
+    pnpm add @openai/apps-sdk-ui@file:../vendor/apps-sdk-ui
+
+Storybook/Argos steps (Milestone 4):
+    cd app
+    pnpm dlx storybook@latest init --yes
+    pnpm add -D @argos-ci/cli
+
+Validation steps (Milestone 5):
+    cd app
+    pnpm lint
+    pnpm typecheck
+    pnpm build
+    pnpm storybook
+    rg --files -g "*.swift"   (expect no output)
+    rg -n "swift" README.md   (expect no Swift prerequisites remaining)
+
+## Validation and Acceptance
+
+Acceptance is met when the main branch can run a React/Tauri app and Storybook using pnpm commands, and the repository contains no Swift files or SwiftPM configuration. Specific evidence includes a successful pnpm build, an operational Storybook instance, and file scans showing no *.swift or Package.swift. The README must describe only the React/Tauri stack and its commands.
+
+## Idempotence and Recovery
+
+The archive tag and branch are the primary rollback path. If the migration fails, reset the main branch to the archive tag. Each scaffold command should be rerunnable without losing state; if Storybook init fails, delete the Storybook config directory and re-run.
+
+## Artifacts and Notes
+
+Expected evidence snippets should be captured during implementation, such as the empty output of rg --files -g "*.swift", and a Storybook startup log line showing the local URL. Include these in this section as indented text when the plan is executed.
+
+## Interfaces and Dependencies
+
+The target dependencies are React, Tauri, Vite, Tailwind v4, Apps SDK UI, GPT widget surfaces, Storybook, and Argos. No additional dependencies should be added without explicit approval. The main UI should use Apps SDK UI components and GPT widget patterns, and any token usage should follow the Apps SDK UI guidance so raw tokens are not used directly in app screens.

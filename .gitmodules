@@ -1,0 +1,3 @@
+[submodule "vendor/apps-sdk-ui"]
+	path = vendor/apps-sdk-ui
+	url = https://github.com/openai/apps-sdk-ui.git
