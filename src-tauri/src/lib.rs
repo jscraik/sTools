@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 /// Maximum allowed path length to prevent DoS
-const MAX_PATH_LENGTH: usize = 4096;
+pub const MAX_PATH_LENGTH: usize = 4096;
 
 /// Scan options passed from the UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +37,7 @@ pub enum ValidationError {
     PathTraversal,
     NotFound,
     NotDirectory,
+    NotGitRepository,
 }
 
 impl std::fmt::Display for ValidationError {
@@ -48,6 +49,7 @@ impl std::fmt::Display for ValidationError {
             ValidationError::PathTraversal => write!(f, "Repository path contains path traversal sequences"),
             ValidationError::NotFound => write!(f, "Repository path does not exist"),
             ValidationError::NotDirectory => write!(f, "Repository path is not a directory"),
+            ValidationError::NotGitRepository => write!(f, "Repository path is not a git repository"),
         }
     }
 }
@@ -61,7 +63,7 @@ impl From<ValidationError> for String {
 }
 
 /// Validate that a path string is safe to use
-fn validate_path_string(path: &str) -> Result<(), ValidationError> {
+pub fn validate_path_string(path: &str) -> Result<(), ValidationError> {
     // Check for empty path
     if path.trim().is_empty() {
         return Err(ValidationError::EmptyPath);
@@ -77,25 +79,39 @@ fn validate_path_string(path: &str) -> Result<(), ValidationError> {
         return Err(ValidationError::InvalidCharacters);
     }
 
-    // Check for path traversal attempts
-    if path.contains("..") || path.contains("~/") {
-        return Err(ValidationError::PathTraversal);
-    }
-
-    // Check for suspicious patterns
-    if path.starts_with('/') && path.contains("/../") {
+    // Reject any path segment equal to ".." (split on both / and \)
+    // Allow "." and "~" segments like "~/.cursor" or "./relative/path"
+    let segments = path.split(['/', '\\']);
+    if segments.clone().any(|s| s == "..") {
+        eprintln!("DEBUG: Path rejected: '{}'", path);
         return Err(ValidationError::PathTraversal);
     }
 
     Ok(())
 }
 
+/// Expand ~ to the home directory
+pub fn expand_tilde(path: &str) -> PathBuf {
+    if path == "~" {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home);
+        }
+    } else if let Some(stripped) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home).join(stripped);
+        }
+    }
+    PathBuf::from(path)
+}
+
 /// Validate and canonicalize a repository path
-fn validate_repo_path(path: &str) -> Result<PathBuf, ValidationError> {
+pub fn validate_repo_path(path: &str) -> Result<PathBuf, ValidationError> {
     // First validate the string itself
     validate_path_string(path)?;
 
-    let path_obj = Path::new(path);
+    // Expand ~ to home directory
+    let expanded_path = expand_tilde(path);
+    let path_obj = expanded_path.as_path();
 
     // Canonicalize to resolve any symlinks or relative components
     let canonical = path_obj
@@ -110,6 +126,12 @@ fn validate_repo_path(path: &str) -> Result<PathBuf, ValidationError> {
     // Verify it's a directory
     if !canonical.is_dir() {
         return Err(ValidationError::NotDirectory);
+    }
+
+    // Verify it's a git repository
+    let git_dir = canonical.join(".git");
+    if !git_dir.exists() {
+        return Err(ValidationError::NotGitRepository);
     }
 
     Ok(canonical)
@@ -135,14 +157,33 @@ fn get_cli_paths() -> Result<(PathBuf, PathBuf), String> {
 
     // For development, look for node in mise/bin directory
     // For production, this should be bundled with the app
-    let node_path = which::which("node")
-        .map_err(|_| "Node.js executable not found. Please ensure Node.js is installed.".to_string())?;
+    let node_path = if let Ok(path) = which::which("node") {
+        path
+    } else {
+        // Fallback: Try common mise Node.js installation paths
+        let home = std::env::var("HOME")
+            .map_err(|_| "Could not determine HOME directory".to_string())?;
+
+        // Try mise default path: ~/.local/share/mise/installs/node/latest/bin/node
+        let mise_node = PathBuf::from(home)
+            .join(".local/share/mise/installs/node/latest/bin/node");
+
+        if mise_node.exists() {
+            mise_node
+        } else {
+            return Err(format!(
+                "Node.js executable not found. Tried system PATH and mise path at: {:?}. \
+                Please ensure Node.js is installed via mise or is in your PATH.",
+                mise_node
+            ));
+        }
+    };
 
     Ok((node_path, cli_script))
 }
 
 /// Validate format parameter
-fn validate_format(format: &str) -> Result<(), String> {
+pub fn validate_format(format: &str) -> Result<(), String> {
     if matches!(format, "json" | "text") {
         Ok(())
     } else {

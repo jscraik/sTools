@@ -24,6 +24,17 @@ export enum ScanError {
 }
 
 /**
+ * Expand ~ to home directory
+ */
+function expandTilde(path: string): string {
+  if (path.startsWith("~/") || path === "~") {
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    return home + path.slice(1);
+  }
+  return path;
+}
+
+/**
  * Validate that a path string is safe to use
  */
 export function validatePathString(path: string): void {
@@ -42,8 +53,10 @@ export function validatePathString(path: string): void {
     throw new Error(ScanError.InvalidCharacters);
   }
 
-  // Check for path traversal attempts
-  if (path.includes("..") || path.includes("~/")) {
+  // Reject any path segment equal to ".." (split on both / and \)
+  // Allow "." and "~" segments like "~/.cursor" or "./relative/path"
+  const segments = path.split(/[\/\\]/);
+  if (segments.includes("..")) {
     throw new Error(ScanError.PathTraversal);
   }
 }
@@ -55,7 +68,9 @@ export async function validateRepoPath(path: string): Promise<string> {
   // First validate the string itself
   validatePathString(path);
 
-  const resolvedPath = resolve(path);
+  // Expand ~ to home directory
+  const expandedPath = expandTilde(path);
+  const resolvedPath = resolve(expandedPath);
 
   // Check if path exists
   const pathStat = await stat(resolvedPath).catch(() => null);
@@ -209,7 +224,7 @@ export async function scanRepo(options: ScanOptions): Promise<{ output: ScanOutp
   ];
 
   // Build glob pattern
-  const pattern = join(repoPath, "**", `*.{${extensions.join(",")}}`);
+  const pattern = `**/*.{${extensions.join(",")}}`;
 
   // Find all matching files
   const files = await glob(pattern, {
@@ -348,18 +363,136 @@ function sortFindings(findings: Finding[]): Finding[] {
 }
 
 /**
- * Run sync-check to validate repo state
- * Currently a placeholder that returns success
+ * Run sync-check to validate repo state and detect agent drift
+ * Compares patterns across Codex, Claude, Copilot, and Codex Skill Manager
  */
-export async function syncCheck(): Promise<{ output: ScanOutput; exitCode: number }> {
+export async function syncCheck(options?: { repo?: string }): Promise<{ output: ScanOutput; exitCode: number }> {
+  // Default to current directory if not specified
+  const repoPath = options?.repo || ".";
+
+  let validatedPath: string;
+  try {
+    validatedPath = await validateRepoPath(repoPath);
+  } catch {
+    // If validation fails, try to proceed with current directory
+    validatedPath = process.cwd();
+  }
+
+  const findings: Finding[] = [];
+  const agentPresence: Record<string, { count: number; files: string[] }> = {};
+
+  const extensions = ["js", "jsx", "ts", "tsx", "py", "rs", "go", "java", "rb", "php"];
+  const globPattern = `**/*.{${extensions.join(",")}}`;
+
+  let files: string[];
+  try {
+    files = await glob(globPattern, {
+      cwd: validatedPath,
+      absolute: false,
+      nodir: true,
+      ignore: [
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/.git/**",
+        "**/target/**",
+        "**/*.min.js",
+        "**/vendor/**",
+      ],
+    });
+  } catch {
+    files = [];
+  }
+
+  // Check each agent type
+  for (const [agent, patterns] of Object.entries(AGENT_PATTERNS)) {
+    const agentFindings: Finding[] = [];
+
+    // Reuse the same files array for all agents
+    for (const file of files) {
+      const filePath = join(validatedPath, file);
+      try {
+        const content = await readFile(filePath, "utf-8");
+
+        for (const { pattern, ruleID, message } of patterns) {
+          if (pattern.test(content)) {
+            agentFindings.push({
+              ruleID,
+              severity: "info" as const,
+              agent: agent as AgentType,
+              file,
+              message,
+              line: undefined, // Could add line number parsing if needed
+            });
+          }
+        }
+      } catch {
+        // Skip files that can't be read
+      }
+    }
+
+    if (agentFindings.length > 0) {
+      agentPresence[agent] = {
+        count: agentFindings.length,
+        files: agentFindings.map((f) => f.file),
+      };
+      findings.push(...agentFindings);
+    }
+  }
+
+  // Generate drift findings
+  const hasClaude = agentPresence.claude?.count > 0;
+  const hasCodex = agentPresence.codex?.count > 0;
+
+  // Detect drift patterns
+  if (hasClaude && !hasCodex) {
+    findings.push({
+      ruleID: "SYNC-001",
+      severity: "warning",
+      agent: "codex",
+      file: ".",
+      message: "Claude patterns found but no Codex patterns detected (possible drift)",
+    });
+  }
+
+  if (hasCodex && !hasClaude) {
+    findings.push({
+      ruleID: "SYNC-002",
+      severity: "info",
+      agent: "codex",
+      file: ".",
+      message: "Codex patterns found but no Claude patterns detected",
+    });
+  }
+
+  // Report which agents are present/absent
+  const detectedAgents = Object.keys(agentPresence);
+  if (detectedAgents.length === 0) {
+    findings.push({
+      ruleID: "SYNC-000",
+      severity: "info",
+      agent: "codex",
+      file: ".",
+      message: "No AI agent patterns detected in this repository",
+    });
+  } else {
+    findings.push({
+      ruleID: "SYNC-003",
+      severity: "info",
+      agent: "codex",
+      file: ".",
+      message: `Agents detected: ${detectedAgents.join(", ")}`,
+    });
+  }
+
   const output: ScanOutput = {
     schemaVersion: "1",
     toolVersion: "0.1.0",
     generatedAt: new Date().toISOString(),
-    scanned: 0,
+    scanned: files.length,
     errors: 0,
-    warnings: 0,
-    findings: [],
+    warnings: findings.filter((f) => f.severity === "warning").length,
+    findings,
   };
 
   return { output, exitCode: EXIT_CODES.Success };

@@ -1,6 +1,8 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import type { Finding } from "../types"
 import { Button } from "./ui/Button"
+import { ContextMenu } from "./ui/ContextMenu"
+import { getSeverityColor } from "../lib/severity"
 
 interface FindingsListProps {
   findings: Finding[]
@@ -31,6 +33,12 @@ export function FindingsList({
 }: FindingsListProps) {
   const [sortBy, setSortBy] = useState<"severity" | "agent" | "file">("file")
 
+  // Check for reduced motion preference
+  const prefersReducedMotion = useMemo(() => {
+    if (typeof window === "undefined") return false
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  }, [])
+
   const sortedFindings = [...findings].sort((a, b) => {
     if (sortBy === "severity") {
       const order = { error: 0, warning: 1, info: 2 }
@@ -41,19 +49,6 @@ export function FindingsList({
     }
     return a.file.localeCompare(b.file)
   })
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case "error":
-        return "text-red-500"
-      case "warning":
-        return "text-yellow-600"
-      case "info":
-        return "text-blue-500"
-      default:
-        return "text-[var(--color-text-muted)]"
-    }
-  }
 
   const clearFilters = () => {
     onFiltersChange({ severity: [], agent: [] })
@@ -187,43 +182,88 @@ export function FindingsList({
             const isFocused = focusedIndex === index
 
             return (
-              <button
-                key={`${finding.file}-${finding.line}-${index}`}
-                onClick={() => onSelectFinding(finding)}
-                style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
-                className={`w-full text-left px-4 py-3 animate-slide-in transition-fast ${
-                  isSelected
-                    ? "bg-[var(--color-background)] ring-1 ring-inset ring-[var(--color-primary)]"
-                    : isFocused
-                      ? "bg-[var(--color-border)]"
-                      : "hover:bg-[var(--color-background)]"
-                }`}
+              <ContextMenu
+                key={`${finding.ruleID}-${finding.file}-${finding.line ?? 0}-${finding.message.slice(0, 20)}`}
+                items={[
+                  {
+                    label: "Copy message",
+                    shortcut: "⌘C",
+                    onClick: () => navigator.clipboard.writeText(finding.message),
+                  },
+                  {
+                    label: "Copy file path",
+                    onClick: () => navigator.clipboard.writeText(`${finding.file}:${finding.line ?? 0}`),
+                  },
+                  {
+                    label: "Copy rule ID",
+                    onClick: () => navigator.clipboard.writeText(finding.ruleID),
+                  },
+                  { separator: true, onClick: () => {} },
+                  {
+                    label: finding.line 
+                      ? `Open ${finding.file}:${finding.line}` 
+                      : `Open ${finding.file}`,
+                    onClick: () => {
+                      // In a real app, this would open the file in the default editor
+                      console.log("Open file:", finding.file, finding.line)
+                    },
+                  },
+                ]}
               >
-              <div className="flex items-start gap-3">
-                {/* Severity Badge */}
-                <span
-                  className={`shrink-0 px-2 py-0.5 rounded text-xs font-medium capitalize ${getSeverityColor(
-                    finding.severity
-                  )} bg-opacity-10`}
+                <button
+                  onClick={() => onSelectFinding(finding)}
+                  style={{ 
+                    animationDelay: prefersReducedMotion ? undefined : `${Math.min(index * 30, 150)}ms` 
+                  }}
+                  className={`group w-full text-left px-4 py-3 animate-slide-in transition-all duration-200 relative
+                    ${isSelected
+                      ? "bg-[var(--color-surface)] shadow-sm"
+                      : isFocused
+                        ? "bg-[var(--color-surface)]/50"
+                        : "hover:bg-[var(--color-surface)] hover:shadow-sm hover:-translate-y-px"
+                    }`}
                 >
-                  {finding.severity}
-                </span>
+                  {/* Left indicator line */}
+                  <div 
+                    className={`absolute left-0 top-0 bottom-0 w-0.5 transition-all duration-200 ${
+                      isSelected 
+                        ? "bg-[var(--color-primary)]" 
+                        : "bg-transparent group-hover:bg-[var(--color-primary)]/30"
+                    }`} 
+                  />
+                  
+                  <div className="flex items-start gap-3">
+                    {/* Severity Badge */}
+                    <span
+                      className={`shrink-0 px-2 py-0.5 rounded text-xs font-medium capitalize ${getSeverityColor(
+                        finding.severity
+                      )} bg-opacity-10 transition-transform duration-200 ${
+                        isSelected ? "scale-105" : "group-hover:scale-105"
+                      }`}
+                    >
+                      {finding.severity}
+                    </span>
 
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] mb-1">
-                    <span className="font-mono">{finding.ruleID}</span>
-                    <span>•</span>
-                    <span className="capitalize">{finding.agent}</span>
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] mb-1">
+                        <span className="font-mono">{finding.ruleID}</span>
+                        <span>•</span>
+                        <span className="capitalize">{finding.agent}</span>
+                      </div>
+                      <p className={`text-sm truncate transition-colors duration-200 ${
+                        isSelected ? "text-[var(--color-text)]" : "text-[var(--color-text-muted)] group-hover:text-[var(--color-text)]"
+                      }`}>
+                        {finding.message}
+                      </p>
+                      <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] mt-1 font-mono">
+                        <span>{finding.file}</span>
+                        {finding.line && <span>:{finding.line}</span>}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-sm truncate">{finding.message}</p>
-                  <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] mt-1 font-mono">
-                    <span>{finding.file}</span>
-                    {finding.line && <span>:{finding.line}</span>}
-                  </div>
-                </div>
-              </div>
-            </button>
+                </button>
+              </ContextMenu>
             )
           })}
         </div>

@@ -145,6 +145,31 @@ skillsinspector/
 | **serde** | JSON serialization (like JSON.parse/stringify but typed) |
 | **std::process::Command** | Spawning the CLI subprocess from Rust |
 
+### Testing (CLI)
+
+**Important: Database tests require Node 22 on this machine**
+
+The `better-sqlite3` package uses native bindings that are compiled for specific Node versions. On this machine, the native bindings don't build under Node 25, so database tests must be run using Node 22.
+
+**To rebuild and run tests using Node 22:**
+
+```bash
+# From packages/cli/
+PATH=/opt/homebrew/opt/node@22/bin:$PATH npm rebuild better-sqlite3
+PATH=/opt/homebrew/opt/node@22/bin:$PATH npm test
+```
+
+**Why this is necessary:**
+- Native modules like `better-sqlite3` contain C++ code compiled against specific Node.js ABI versions
+- Node 22 (LTS) has better prebuilt binary support than Node 25 (current)
+- When switching Node versions, you must rebuild native modules
+- The PATH prepending ensures the correct Node version is used for both rebuild and test execution
+
+**How to avoid this issue:**
+- Use Node.js LTS versions (like 22) for development
+- Avoid using the absolute latest Node version for projects with native dependencies
+- Consider using `nvm` or `mise` to manage Node versions per project
+
 ---
 
 ## Key Technical Decisions (The ADRs)

@@ -15,7 +15,7 @@
     "build-storybook": "storybook build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "tauri:build": "pnpm -s build:cli && pnpm -s build && tauri build --debug && node scripts/bundle-cli.js",
     "skillsctl": "node packages/cli/dist/cli.js",
     "lint": "biome check . --diagnostic-level=error",
     "lint:fix": "biome check --write .",

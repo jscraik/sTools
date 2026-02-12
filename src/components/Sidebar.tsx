@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react"
 import { Button } from "./ui/Button"
 import { Separator } from "./ui/Separator"
+import { AnimatedCheckbox } from "./ui/AnimatedCheckbox"
 
 const STORAGE_KEY = "skillsinspector:scan-roots"
+
+type AnalysisMode = "validate" | "sync-check"
 
 interface ScanRoot {
   id: string
@@ -12,7 +15,10 @@ interface ScanRoot {
 
 interface SidebarProps {
   onScan: () => void
+  onSyncCheck: () => void
   isScanning: boolean
+  mode: AnalysisMode
+  onModeChange: (mode: AnalysisMode) => void
   filters: {
     severity: ("error" | "warning" | "info")[]
     agent: string[]
@@ -33,7 +39,10 @@ function getRootName(path: string): string {
 
 export function Sidebar({
   onScan,
+  onSyncCheck,
   isScanning,
+  mode,
+  onModeChange,
   filters,
   onFiltersChange,
   repoPath,
@@ -108,7 +117,7 @@ export function Sidebar({
   }
 
   return (
-    <aside className="w-60 border-r border-[var(--color-border)] flex flex-col bg-[var(--color-surface)]">
+    <aside className="w-60 h-full border-r border-[var(--color-border)] flex flex-col bg-[var(--color-surface)] overflow-hidden">
       {/* Branding */}
       <div className="p-4 border-b border-[var(--color-border)]">
         <div className="flex items-center gap-2">
@@ -131,16 +140,24 @@ export function Sidebar({
           </h3>
           <nav className="space-y-1">
             <button
-              className="w-full text-left px-3 py-2 rounded-md text-sm bg-[var(--color-primary)] text-white"
+              onClick={() => onModeChange("validate")}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-fast ${
+                mode === "validate"
+                  ? "bg-[var(--color-primary)] text-white"
+                  : "text-[var(--color-text)] hover:bg-[var(--color-background)]"
+              }`}
             >
               Validate
             </button>
             <button
-              className="w-full text-left px-3 py-2 rounded-md text-sm text-[var(--color-text)] hover:bg-[var(--color-background)]"
-              disabled
+              onClick={() => onModeChange("sync-check")}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-fast ${
+                mode === "sync-check"
+                  ? "bg-[var(--color-primary)] text-white"
+                  : "text-[var(--color-text)] hover:bg-[var(--color-background)]"
+              }`}
             >
               Sync-check
-              <span className="ml-auto text-xs text-[var(--color-text-muted)]">Soon</span>
             </button>
           </nav>
         </div>
@@ -166,12 +183,16 @@ export function Sidebar({
         {/* Actions */}
         <div className="p-4">
           <Button
-            onClick={onScan}
+            onClick={mode === "validate" ? onScan : onSyncCheck}
             disabled={isScanning || !repoPath.trim()}
             variant="primary"
             className="w-full"
           >
-            {isScanning ? "Scanning..." : "Run Scan"}
+            {isScanning
+              ? "Scanning..."
+              : mode === "validate"
+                ? "Run Scan"
+                : "Check Sync"}
           </Button>
         </div>
 
@@ -182,34 +203,25 @@ export function Sidebar({
           <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
             Filter by Severity
           </h3>
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={filters.severity.includes("error")}
-                onChange={() => toggleSeverity("error")}
-                className="rounded"
-              />
-              <span className="text-red-500">Error</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={filters.severity.includes("warning")}
-                onChange={() => toggleSeverity("warning")}
-                className="rounded"
-              />
-              <span className="text-yellow-600">Warning</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={filters.severity.includes("info")}
-                onChange={() => toggleSeverity("info")}
-                className="rounded"
-              />
-              <span className="text-blue-500">Info</span>
-            </label>
+          <div className="space-y-2.5">
+            <AnimatedCheckbox
+              id="filter-error"
+              checked={filters.severity.includes("error")}
+              onChange={() => toggleSeverity("error")}
+              label={<span className="text-[var(--color-critical)]">Error</span>}
+            />
+            <AnimatedCheckbox
+              id="filter-warning"
+              checked={filters.severity.includes("warning")}
+              onChange={() => toggleSeverity("warning")}
+              label={<span className="text-[var(--color-warn)]">Warning</span>}
+            />
+            <AnimatedCheckbox
+              id="filter-info"
+              checked={filters.severity.includes("info")}
+              onChange={() => toggleSeverity("info")}
+              label={<span className="text-blue-500">Info</span>}
+            />
           </div>
         </div>
 
@@ -220,17 +232,15 @@ export function Sidebar({
           <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">
             Filter by Agent
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {agents.map((agent) => (
-              <label key={agent} className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={filters.agent.includes(agent)}
-                  onChange={() => toggleAgent(agent)}
-                  className="rounded"
-                />
-                <span className="capitalize">{agent}</span>
-              </label>
+              <AnimatedCheckbox
+                key={agent}
+                id={`filter-${agent}`}
+                checked={filters.agent.includes(agent)}
+                onChange={() => toggleAgent(agent)}
+                label={<span className="capitalize">{agent}</span>}
+              />
             ))}
           </div>
         </div>
@@ -259,7 +269,7 @@ export function Sidebar({
                   </button>
                   <button
                     onClick={() => handleRemoveRoot(root.id)}
-                    className="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-red-500 px-1 transition-fast"
+                    className="text-[var(--color-text-muted)] hover:text-[var(--color-critical)] px-1.5 py-0.5 rounded transition-fast focus-visible:outline-2 focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] opacity-60 hover:opacity-100"
                     title="Remove root"
                   >
                     ×

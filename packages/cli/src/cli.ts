@@ -85,7 +85,7 @@ program
     try {
       await ensureDb();
 
-      const result = await syncCheck();
+      const result = await syncCheck({ repo: options.repo });
 
       // Format and output
       const output = formatOutput(result.output, options.format);

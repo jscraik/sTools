@@ -4,9 +4,9 @@
 
 import { describe, it } from "node:test";
 import { strictEqual, deepEqual } from "node:assert";
-import { scanRepo, validatePathString, validateRepoPath, validateFormat, ScanError } from "../src/scanner.js";
-import type { ScanOutput } from "../src/types.js";
-import { createTestRepo } from "./utils/test.js";
+import { scanRepo, validatePathString, validateRepoPath, validateFormat, ScanError } from "../dist/scanner.js";
+import type { ScanOutput } from "../dist/types.js";
+import { createTestRepo } from "./utils/test.ts";
 
 describe("scanner", () => {
   describe("validatePathString", () => {
@@ -54,14 +54,7 @@ describe("scanner", () => {
         }
       }
 
-      try {
-        validatePathString("~/path");
-        throw new Error("Should have thrown");
-      } catch (error) {
-        if (error instanceof Error) {
-          strictEqual(error.message, ScanError.PathTraversal);
-        }
-      }
+      validatePathString("~/.cursor");
     });
 
     it("should reject paths exceeding max length", () => {
@@ -203,8 +196,10 @@ import { Anthropic } from "@anthropic-ai/sdk";
           schemaVersion: "1",
         });
 
-        // Output should be identical
-        deepEqual(result1.output, result2.output);
+        // Output should be identical (ignore generatedAt timestamp)
+        const output1 = { ...result1.output, generatedAt: "fixed" };
+        const output2 = { ...result2.output, generatedAt: "fixed" };
+        deepEqual(output1, output2);
         strictEqual(result1.exitCode, result2.exitCode);
       } finally {
         await repo.cleanup();

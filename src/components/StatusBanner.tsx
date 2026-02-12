@@ -4,6 +4,7 @@ interface StatusBannerProps {
   state: "idle" | "scanning" | "success" | "error"
   scanResult: ScanResult | null
   parsedOutput: ScanOutput | null
+  scannedFiles?: number
 }
 
 function getErrorAction(error: string): { message: string; action?: string } {
@@ -37,14 +38,42 @@ function getErrorAction(error: string): { message: string; action?: string } {
   return { message: error }
 }
 
-export function StatusBanner({ state, scanResult, parsedOutput }: StatusBannerProps) {
+export function StatusBanner({ state, scanResult, parsedOutput, scannedFiles }: StatusBannerProps) {
   if (state === "idle" || state === "scanning") {
     return (
       <div className="mx-6 mt-4">
         {state === "scanning" && (
-          <div className="animate-fade-in px-4 py-3 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center gap-3 shadow-sm">
-            <div className="w-4 h-4 rounded-full border-2 border-[var(--color-primary)] border-t-transparent animate-spin" />
-            <span className="text-sm">Scanning repository...</span>
+          <div className="animate-fade-in overflow-hidden rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] shadow-sm">
+            {/* Progress bar background */}
+            <div className="relative h-1 bg-[var(--color-border)] overflow-hidden">
+              {/* Animated indeterminate progress */}
+              <div 
+                className="absolute inset-y-0 left-0 w-1/3 bg-[var(--color-primary)] animate-progress-indeterminate"
+                style={{
+                  animation: "progress-indeterminate 1.5s ease-in-out infinite"
+                }}
+              />
+            </div>
+            <div className="px-4 py-3 flex items-center gap-3">
+              {/* Animated spinner with gradient */}
+              <div className="relative w-5 h-5">
+                <div className="absolute inset-0 rounded-full border-2 border-[var(--color-border)]" />
+                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[var(--color-primary)] animate-spin" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Scanning repository...</p>
+                {scannedFiles !== undefined && scannedFiles > 0 && (
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                    {scannedFiles} files analyzed
+                  </p>
+                )}
+              </div>
+              {/* Pulsing dot */}
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-primary)] opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-primary)]" />
+              </span>
+            </div>
           </div>
         )}
       </div>
@@ -52,7 +81,6 @@ export function StatusBanner({ state, scanResult, parsedOutput }: StatusBannerPr
   }
 
   if (state === "error") {
-    // Show detailed error if available, otherwise show scanResult.error
     const errorMessage = scanResult?.error || "An unknown error occurred"
     const errorInfo = getErrorAction(errorMessage)
 
@@ -60,7 +88,6 @@ export function StatusBanner({ state, scanResult, parsedOutput }: StatusBannerPr
       <div className="mx-6 mt-4">
         <div className="animate-fade-in px-4 py-3 rounded-md bg-[var(--color-critical-bg)] border border-[var(--color-critical)] text-[var(--color-critical)] shadow-sm">
           <div className="flex items-start gap-3">
-            {/* Error icon */}
             <svg
               className="w-5 h-5 shrink-0 mt-0.5"
               viewBox="0 0 20 20"

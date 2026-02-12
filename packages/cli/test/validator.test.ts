@@ -4,8 +4,8 @@
 
 import { describe, it } from "node:test";
 import { strictEqual, deepEqual } from "node:assert";
-import { validateOutput, createOutputValidator } from "../src/validator.js";
-import type { ScanOutput } from "../src/types.js";
+import { validateOutput, createOutputValidator } from "../dist/validator.js";
+import type { ScanOutput } from "../dist/types.js";
 
 describe("validator", () => {
   describe("validateOutput", () => {

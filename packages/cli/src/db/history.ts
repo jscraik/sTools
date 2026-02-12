@@ -20,7 +20,7 @@ export async function saveScanRun(
   exitCode: number,
   startedAt: Date
 ): Promise<string> {
-  const { db, sqlite } = createDb();
+  const { db, client } = createDb();
 
   try {
     const finishedAt = new Date();
@@ -61,7 +61,7 @@ export async function saveScanRun(
 
     return runId;
   } finally {
-    sqlite.close();
+    client.close();
   }
 }
 
@@ -72,7 +72,7 @@ export async function saveScanRun(
  * @returns Scan run or null if not found
  */
 export async function getScanRun(runId: string) {
-  const { db, sqlite } = createDb();
+  const { db, client } = createDb();
 
   try {
     const run = await db
@@ -97,7 +97,7 @@ export async function getScanRun(runId: string) {
       findings: runFindings,
     };
   } finally {
-    sqlite.close();
+    client.close();
   }
 }
 
@@ -109,7 +109,7 @@ export async function getScanRun(runId: string) {
  * @returns Array of scan runs
  */
 export async function listScanRuns(repoPath?: string, limit = 50) {
-  const { db, sqlite } = createDb();
+  const { db, client } = createDb();
 
   try {
     const whereClause = repoPath ? eq(scanRuns.repoPath, repoPath) : undefined;
@@ -142,7 +142,7 @@ export async function listScanRuns(repoPath?: string, limit = 50) {
 
     return runsWithCounts;
   } finally {
-    sqlite.close();
+    client.close();
   }
 }
 
@@ -154,7 +154,7 @@ export async function listScanRuns(repoPath?: string, limit = 50) {
  * @returns Array of recent scan runs
  */
 export async function getRecentRuns(days = 7, limit = 20) {
-  const { db, sqlite } = createDb();
+  const { db, client } = createDb();
 
   try {
     const cutoffDate = new Date();
@@ -170,7 +170,7 @@ export async function getRecentRuns(days = 7, limit = 20) {
 
     return runs;
   } finally {
-    sqlite.close();
+    client.close();
   }
 }
 
@@ -181,7 +181,7 @@ export async function getRecentRuns(days = 7, limit = 20) {
  * @returns Statistics object
  */
 export async function getScanStats(repoPath: string) {
-  const { db, sqlite } = createDb();
+  const { db, client } = createDb();
 
   try {
     const runs = await db
@@ -212,7 +212,7 @@ export async function getScanStats(repoPath: string) {
       lastScan: runs[0] || null,
     };
   } finally {
-    sqlite.close();
+    client.close();
   }
 }
 
@@ -223,7 +223,7 @@ export async function getScanStats(repoPath: string) {
  * @returns Number of deleted runs
  */
 export async function pruneOldRuns(retentionDays = RETENTION_DAYS): Promise<number> {
-  const { db, sqlite } = createDb();
+  const { db, client } = createDb();
 
   try {
     const cutoffDate = new Date();
@@ -245,12 +245,12 @@ export async function pruneOldRuns(retentionDays = RETENTION_DAYS): Promise<numb
       await db.delete(scanRuns).where(eq(scanRuns.id, run.id)).run();
     }
 
-    // Vacuum database to reclaim space
-    sqlite.exec("VACUUM");
+    // Vacuum database to reclaim space (libsql doesn't support VACUUM through execute)
+    await client.execute("VACUUM");
 
     return oldRuns.length;
   } finally {
-    sqlite.close();
+    client.close();
   }
 }
 

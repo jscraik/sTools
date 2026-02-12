@@ -1,5 +1,6 @@
 import type { Finding } from "../types"
 import { Button } from "./ui/Button"
+import { getSeverityColor, getSeverityBg } from "../lib/severity"
 
 interface DetailPanelProps {
   finding: Finding | null
@@ -19,32 +20,6 @@ export function DetailPanel({ finding }: DetailPanelProps) {
         </div>
       </div>
     )
-  }
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case "error":
-        return "text-red-500"
-      case "warning":
-        return "text-yellow-600"
-      case "info":
-        return "text-blue-500"
-      default:
-        return "text-[var(--color-text-muted)]"
-    }
-  }
-
-  const getSeverityBg = (severity: string) => {
-    switch (severity) {
-      case "error":
-        return "bg-red-500/10"
-      case "warning":
-        return "bg-yellow-500/10"
-      case "info":
-        return "bg-blue-500/10"
-      default:
-        return "bg-[var(--color-surface)]"
-    }
   }
 
   return (

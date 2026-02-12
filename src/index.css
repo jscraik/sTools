@@ -171,7 +171,28 @@ body {
   }
 
   .animate-slide-in {
-    animation: slide-in-left var(--duration-medium) var(--ease-default);
+    animation: slide-in-left var(--duration-medium) var(--ease-default) forwards;
+  }
+
+  /* Slide in from bottom */
+  @keyframes slide-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-in-up {
+    animation: slide-in-up var(--duration-medium) var(--ease-default) forwards;
+  }
+
+  /* Backdrop blur support */
+  .backdrop-blur-sm {
+    backdrop-filter: blur(4px);
   }
 
   /* Staggered children delay */
@@ -216,5 +237,34 @@ body {
     stroke-dasharray: 24;
     stroke-dashoffset: 24;
     animation: checkmark var(--duration-fast) var(--ease-bounce) forwards;
+  }
+
+  /* Indeterminate progress bar */
+  @keyframes progress-indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(100%);
+    }
+    100% {
+      transform: translateX(300%);
+    }
+  }
+
+  .animate-progress-indeterminate {
+    animation: progress-indeterminate 1.5s var(--ease-in-out) infinite;
+  }
+
+  /* Ping animation for status indicator */
+  @keyframes ping {
+    75%, 100% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+
+  .animate-ping {
+    animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
 }

@@ -5,12 +5,17 @@ import { Sidebar } from "./components/Sidebar"
 import { FindingsList } from "./components/FindingsList"
 import { DetailPanel } from "./components/DetailPanel"
 import { StatusBanner } from "./components/StatusBanner"
+import { EmptyState } from "./components/EmptyState"
+import { CommandPalette } from "./components/CommandPalette"
 
 type ScanState = "idle" | "scanning" | "success" | "error"
+type AnalysisMode = "validate" | "sync-check"
 
 function App() {
   const [repoPath, setRepoPath] = useState("")
+  const [mode, setMode] = useState<AnalysisMode>("validate")
   const [scanState, setScanState] = useState<ScanState>("idle")
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [parsedOutput, setParsedOutput] = useState<ScanOutput | null>(null)
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null)
@@ -20,7 +25,7 @@ function App() {
     agent: string[]
   }>({ severity: [], agent: [] })
 
-  const handleScan = async () => {
+  const handleScan = useCallback(async () => {
     if (!repoPath.trim()) {
       setScanState("error")
       setScanResult({
@@ -71,7 +76,7 @@ function App() {
         error: err instanceof Error ? err.message : String(err),
       })
     }
-  }
+  }, [repoPath])
 
   const filteredFindings = parsedOutput?.findings?.filter((finding) => {
     if (filters.severity.length > 0 && !filters.severity.includes(finding.severity)) {
@@ -106,6 +111,55 @@ function App() {
     URL.revokeObjectURL(url)
   }, [parsedOutput, filteredFindings])
 
+  const handleSyncCheck = useCallback(async () => {
+    if (!repoPath.trim()) {
+      setScanState("error")
+      setScanResult({
+        success: false,
+        output: "",
+        exit_code: 1,
+        error: "Please enter a repository path",
+      })
+      return
+    }
+
+    setScanState("scanning")
+    setSelectedFinding(null)
+    setParsedOutput(null)
+
+    try {
+      const result = await invoke<ScanResult>("run_sync_check", {
+        options: {
+          repo: repoPath,
+          format: "json",
+        },
+      })
+      setScanResult(result)
+
+      // Try to parse JSON output
+      if (result.success && result.output) {
+        try {
+          const parsed = JSON.parse(result.output) as ScanOutput
+          setParsedOutput(parsed)
+          setScanState("success")
+        } catch {
+          // Output isn't JSON or parsing failed
+          setScanState("success")
+        }
+      } else {
+        setScanState(result.success ? "success" : "error")
+      }
+    } catch (err) {
+      setScanState("error")
+      setScanResult({
+        success: false,
+        output: "",
+        exit_code: 1,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }, [repoPath])
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -114,11 +168,15 @@ function App() {
         return
       }
 
-      // Cmd+R / Ctrl+R - Run scan
+      // Cmd+R / Ctrl+R - Run scan or sync-check based on mode
       if ((e.metaKey || e.ctrlKey) && e.key === "r") {
         e.preventDefault()
         if (scanState !== "scanning" && repoPath.trim()) {
-          handleScan()
+          if (mode === "sync-check") {
+            handleSyncCheck()
+          } else {
+            handleScan()
+          }
         }
         return
       }
@@ -127,6 +185,13 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === "e") {
         e.preventDefault()
         handleExport()
+        return
+      }
+
+      // Cmd+K - Open command palette
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault()
+        setIsCommandPaletteOpen(true)
         return
       }
 
@@ -162,7 +227,7 @@ function App() {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [scanState, repoPath, filteredFindings, focusedIndex, handleScan, handleExport])
+  }, [scanState, repoPath, filteredFindings, focusedIndex, handleExport, mode, handleScan, handleSyncCheck])
 
   // Update focused index when selected finding changes externally
   useEffect(() => {
@@ -181,7 +246,10 @@ function App() {
       {/* Sidebar */}
       <Sidebar
         onScan={handleScan}
+        onSyncCheck={handleSyncCheck}
         isScanning={scanState === "scanning"}
+        mode={mode}
+        onModeChange={setMode}
         filters={filters}
         onFiltersChange={setFilters}
         repoPath={repoPath}
@@ -205,44 +273,45 @@ function App() {
           parsedOutput={parsedOutput}
         />
 
-        {/* Empty State (when no results) */}
-        {scanState === "idle" && (
-          <div className="flex-1 flex items-center justify-center p-6">
-            <div className="text-center">
-              <p className="text-[var(--color-text-muted)] mb-4">
-                Enter a directory path in the sidebar and click "Run Scan" to begin
-              </p>
-              <div className="text-xs text-[var(--color-text-muted)] space-y-1">
-                <p className="font-medium mb-2">Keyboard shortcuts:</p>
-                <p><kbd className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono">Cmd+R</kbd> Run scan</p>
-                <p><kbd className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono">↑↓</kbd> Navigate findings</p>
-                <p><kbd className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono">Enter</kbd> Select finding</p>
-                <p><kbd className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono">Esc</kbd> Clear selection</p>
-                <p><kbd className="px-1.5 py-0.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] font-mono">Cmd+E</kbd> Export findings</p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Command Palette */}
+        <CommandPalette
+          isOpen={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          findings={filteredFindings}
+          onSelectFinding={setSelectedFinding}
+          onRunScan={handleScan}
+          onRunSyncCheck={handleSyncCheck}
+          onExport={handleExport}
+          mode={mode}
+          onChangeMode={setMode}
+        />
 
-        {/* Results Area */}
-        {(scanState === "success" || scanState === "error") && (
-          <div className="flex-1 flex overflow-hidden">
-            {/* Findings List */}
-            <FindingsList
-              findings={filteredFindings}
-              selectedFinding={selectedFinding}
-              onSelectFinding={setSelectedFinding}
-              focusedIndex={focusedIndex}
-              filters={filters}
-              onFiltersChange={setFilters}
-              totalCount={parsedOutput?.findings?.length ?? 0}
-              onExport={handleExport}
+        {/* Content Area */}
+        <div className="flex-1 flex overflow-hidden">
+          {scanState === "idle" ? (
+            <EmptyState 
+              hasRepoPath={!!repoPath.trim()}
+              onStartScan={mode === "validate" ? handleScan : handleSyncCheck}
             />
+          ) : (
+            <>
+              {/* Findings List */}
+              <FindingsList
+                findings={filteredFindings}
+                selectedFinding={selectedFinding}
+                onSelectFinding={setSelectedFinding}
+                focusedIndex={focusedIndex}
+                filters={filters}
+                onFiltersChange={setFilters}
+                totalCount={parsedOutput?.findings?.length ?? 0}
+                onExport={handleExport}
+              />
 
-            {/* Detail Panel */}
-            <DetailPanel finding={selectedFinding} />
-          </div>
-        )}
+              {/* Detail Panel */}
+              <DetailPanel finding={selectedFinding} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
